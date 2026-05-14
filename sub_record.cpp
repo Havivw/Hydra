@@ -10,6 +10,8 @@
 #include "subconfig.h"
 #include "shared.h"
 #include "sub_shared.h"
+#include "keeloq_pwm.h"
+#include "keeloq_keys.h"
 
 #include <FS.h>
 #include <SD.h>
@@ -67,6 +69,11 @@ static int      sampleCount = 0;
 static uint32_t decodedValue = 0;
 static int      decodedBitLength = 0;
 static int      decodedProtocol = 0;
+
+// KeeLoq decode result. Populated by tryKeeloqDecode() (called after
+// the rc-switch attempt misses). ok=false when the capture wasn't
+// recognised as a KeeLoq frame OR no manufacturer key matched.
+static KeeloqDecode::Result decodedKeeloq = {};
 
 static const char* protocolName(int p) {
   switch (p) {
@@ -169,6 +176,7 @@ static void cc1101RxPrep(uint32_t freqHz) {
   decodedValue = 0;
   decodedBitLength = 0;
   decodedProtocol = 0;
+  decodedKeeloq.ok = false;
   subSwitch.enableReceive(CC1101_GDO0_PIN);
 }
 
@@ -183,6 +191,28 @@ static void cc1101RxDone() {
   }
   subSwitch.disableReceive();
   ELECHOUSE_cc1101.setSidle();
+}
+
+// If rc-switch didn't recognise the capture, fall through to the
+// keystore-iterating KeeLoq decoder. Lazy-loads /hydra/keeloq_keys.txt
+// the first time KeeLoq decode is attempted in a session.
+static void tryKeeloqDecode() {
+  decodedKeeloq.ok = false;
+
+  // Skip if we already got a fixed-code match — KeeLoq has a small
+  // false-positive rate and the rc-switch hit is more trustworthy.
+  if (decodedProtocol > 0) return;
+  if (sampleCount < 80) return;
+
+  if (!KeeloqKeys::isLoaded()) {
+    KeeloqKeys::loadFromSd();
+  }
+  if (KeeloqKeys::count() <= 0) return;
+
+  KeeloqDecode::Frame frame;
+  if (!KeeloqPwm::parseFrame(subSampleBuf, sampleCount, frame)) return;
+
+  decodedKeeloq = KeeloqDecode::tryDecode(frame);
 }
 
 // Tight RX loop. Polls GDO0; on each level change, appends a signed
@@ -259,6 +289,25 @@ static bool writeSubFile(const char *path, uint32_t freqHz) {
     f.printf("# Hydra_RCSwitch_Protocol: %d\n", decodedProtocol);
     f.printf("# Hydra_RCSwitch_BitLength: %d\n", decodedBitLength);
     f.printf("# Hydra_RCSwitch_Value: %lu\n", (unsigned long)decodedValue);
+  }
+
+  // KeeLoq decode result — saved so SubReplay can offer counter+1 replay
+  // without redoing the keystore iteration. DeviceKey is the per-device
+  // 64-bit key already derived for this remote; storing it (rather than
+  // the mfr key) means replay doesn't need keystore access at all.
+  if (decodedKeeloq.ok) {
+    f.printf("# Hydra_KeeLoq_Mfr: %s\n", decodedKeeloq.mfrName);
+    f.printf("# Hydra_KeeLoq_LearningType: %u\n",
+             (unsigned)decodedKeeloq.learningType);
+    f.printf("# Hydra_KeeLoq_Serial: 0x%07lX\n",
+             (unsigned long)(decodedKeeloq.serial & 0x0FFFFFFFu));
+    f.printf("# Hydra_KeeLoq_Button: %u\n",
+             (unsigned)decodedKeeloq.button);
+    f.printf("# Hydra_KeeLoq_Counter: %u\n",
+             (unsigned)decodedKeeloq.counter);
+    f.printf("# Hydra_KeeLoq_DeviceKey: 0x%08lX%08lX\n",
+             (unsigned long)(decodedKeeloq.deviceKey >> 32),
+             (unsigned long)(decodedKeeloq.deviceKey & 0xFFFFFFFFu));
   }
 
   // Flipper convention: at most ~512 samples per RAW_Data: line; emit
@@ -365,9 +414,10 @@ static void drawDone(uint32_t freqHz) {
   tft.setCursor(10, 130);
   tft.printf("Freq:    %.3f MHz", freqHz / 1000000.0f);
 
-  // If rc-switch recognised the signal, surface the decode in cyan so
-  // the user knows it's something Replay can resend as a clean burst,
-  // not just raw timing samples.
+  // Identification line. rc-switch fixed-code match takes priority over
+  // KeeLoq (rc-switch has lower false-positive rate); if rc-switch
+  // misses, fall through to the KeeLoq result; if neither matched, just
+  // call it RAW.
   if (decodedProtocol > 0) {
     tft.setTextColor(TFT_CYAN);
     tft.setCursor(10, 150);
@@ -375,6 +425,15 @@ static void drawDone(uint32_t freqHz) {
     tft.setCursor(10, 168);
     tft.printf("Code: 0x%lX  (%d bit)",
                (unsigned long)decodedValue, decodedBitLength);
+  } else if (decodedKeeloq.ok) {
+    tft.setTextColor(TFT_MAGENTA);
+    tft.setCursor(10, 150);
+    tft.printf("KeeLoq: %s", decodedKeeloq.mfrName);
+    tft.setCursor(10, 168);
+    tft.printf("S/N 0x%07lX  Btn %X  Cnt %u",
+               (unsigned long)(decodedKeeloq.serial & 0x0FFFFFFFu),
+               decodedKeeloq.button,
+               (unsigned)decodedKeeloq.counter);
   } else {
     tft.setTextColor(TFT_DARKGREY);
     tft.setCursor(10, 150);
@@ -507,6 +566,7 @@ void subRecordLoop() {
       cc1101RxPrep(freqHz);
       bool got = captureSamples();
       cc1101RxDone();
+      tryKeeloqDecode();
 
       listenStartMs = now;
       if (got) {
@@ -553,6 +613,7 @@ void subRecordLoop() {
       cc1101RxPrep(freqHz);
       bool got = captureSamples();
       cc1101RxDone();
+      tryKeeloqDecode();
 
       if (got) {
         phase = PHASE_DONE;

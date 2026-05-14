@@ -16,14 +16,34 @@ namespace KeeloqKeys {
 
 namespace {
 
-Entry entries[MAX_ENTRIES];
-int   entryCount = 0;
-bool  loadedOnce = false;
+// Heap-backed entry buffer. Grows on demand in addEntry(). Starting at
+// nullptr keeps DRAM BSS at zero until the user actually has a keystore
+// on SD — most users won't have one and don't pay any RAM cost.
+// Keystores larger than MAX_ENTRIES are silently truncated; in practice
+// real-world tables top out around 150 entries.
+Entry* entries     = nullptr;
+int    capacity    = 0;
+int    entryCount  = 0;
+bool   loadedOnce  = false;
 
 // Returned when at() is called with an out-of-range index. Marking it
 // static keeps the symbol private; const so callers can't accidentally
 // scribble through it.
 const Entry kEmpty = { 0, 0, "" };
+
+// Grow the entries buffer to accommodate at least one more entry.
+// Returns false on heap-exhaustion (rare; ESP32 has ~200 KB free).
+bool ensureCapacity() {
+  if (entryCount < capacity) return true;
+  if (capacity >= MAX_ENTRIES) return false;
+  int newCap = (capacity == 0) ? 32 : capacity * 2;
+  if (newCap > MAX_ENTRIES) newCap = MAX_ENTRIES;
+  Entry* nb = (Entry*)realloc(entries, (size_t)newCap * sizeof(Entry));
+  if (!nb) return false;
+  entries  = nb;
+  capacity = newCap;
+  return true;
+}
 
 // Trim leading whitespace in-place. Returns pointer to first non-WS char.
 char* lstrip(char* s) {
@@ -45,7 +65,7 @@ void rstrip(char* s) {
 int count() { return entryCount; }
 
 const Entry& at(int idx) {
-  if (idx < 0 || idx >= entryCount) return kEmpty;
+  if (idx < 0 || idx >= entryCount || !entries) return kEmpty;
   return entries[idx];
 }
 
@@ -54,10 +74,12 @@ void clear() {
   // Don't reset loadedOnce — if the user explicitly clears, they may
   // still want subsequent calls to treat the table as "user has been
   // here" so a feature doesn't auto-reload from SD.
+  // Keep the heap buffer allocated for reuse, avoiding malloc churn
+  // if the user re-loads from SD a second time.
 }
 
 bool addEntry(uint64_t mfrKey, uint8_t learningType, const char* name) {
-  if (entryCount >= MAX_ENTRIES) return false;
+  if (!ensureCapacity()) return false;
   Entry& e = entries[entryCount++];
   e.mfrKey = mfrKey;
   e.learningType = learningType;
