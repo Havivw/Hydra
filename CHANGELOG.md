@@ -8,6 +8,33 @@ are bumped.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-14
+
+- **New SubGHz feature: `Send KeeLoq` (submenu idx 10).** Manual
+  KeeLoq transmitter using the runtime keystore. Phase-based UI walks
+  the user through:
+  1. Manufacturer — scrollable list of loaded `/hydra/keeloq_keys.txt`
+     entries. Shows learning-type number alongside each name.
+  2. Frequency — WardriveConfig channels, defaults to 433.920 MHz.
+  3. Serial — 7-digit hex entry with cursor for the 28-bit serial.
+  4. Button — 4-bit button code 0..F.
+  5. Counter — 16-bit counter, defaults to 1; UP/DOWN ± 1, LEFT + 16.
+  6. Ready — review screen; UP transmits, counter auto-advances on
+     each press so successive UP fires send counter+1, counter+2, …
+- Implementation in `sub_keeloq.{h,cpp}`. Derives the per-device key
+  via the mfr's `learning_type` learning function (Normal / Secure /
+  MagicXor / Faac / etc.), builds the cleartext hop, encrypts via
+  `Keeloq::encrypt`, synthesises a PWM frame via
+  `KeeloqPwm::buildFrame`, and bit-bangs it out via the same CC1101
+  OOK async path SubReplay uses.
+- If `/hydra/keeloq_keys.txt` is missing or empty, the feature opens
+  to a banner explaining the file format. No crash, no silent no-op.
+- Limitation: Secure / FAAC learning types need the original seed,
+  which manual entry can't recover. Real receivers using those
+  variants will ignore the transmission. (Capture-derived replay
+  via Record→Replay handles this correctly because the device key
+  is already baked into the captured `.sub` file.)
+
 ## [0.2.0] — 2026-05-14
 
 - **KeeLoq decode + counter+1 replay (Stage 3a Path A).** Hydra now

@@ -21,7 +21,7 @@
 #define HYDRA_VERSION_H
 
 #define HYDRA_VERSION_MAJOR 0
-#define HYDRA_VERSION_MINOR 2
+#define HYDRA_VERSION_MINOR 3
 #define HYDRA_VERSION_PATCH 0
 
 // Stringification dance: turn numeric macros into a "0.0.1" literal.

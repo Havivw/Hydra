@@ -48,6 +48,7 @@
 #include "sub_replay.h"
 #include "sub_record.h"
 #include "sub_sendcode.h"
+#include "sub_keeloq.h"
 #include "nrf_mousejack.h"
 #include "nrf_sniffer.h"
 #include "nrf_heatmap.h"
@@ -154,7 +155,7 @@ const char *nrf_submenu_items[nrf_NUM_SUBMENU_ITEMS] = {
     "Back to Main Menu"};
 
 
-const int subghz_NUM_SUBMENU_ITEMS = 11;
+const int subghz_NUM_SUBMENU_ITEMS = 12;
 const char *subghz_submenu_items[subghz_NUM_SUBMENU_ITEMS] = {
     "Replay Attack",
     "SubGHz Jammer",
@@ -166,6 +167,7 @@ const char *subghz_submenu_items[subghz_NUM_SUBMENU_ITEMS] = {
     "Sweep Jammer",
     "Record .sub",
     "Send Code",
+    "Send KeeLoq",
     "Back to Main Menu"};
 
 
@@ -274,6 +276,7 @@ const unsigned char *subghz_submenu_icons[subghz_NUM_SUBMENU_ITEMS] = {
     bitmap_icon_jammer,    // Sweep Jammer
     bitmap_icon_eye,       // Record .sub
     bitmap_icon_key,       // Send Code
+    bitmap_icon_kill,      // Send KeeLoq
     bitmap_icon_go_back
 };
 
@@ -3167,7 +3170,7 @@ void handleSubGHzSubmenuButtons() {
         last_interaction_time = millis();
         delay(200);
 
-        if (current_submenu_index == 10) {  // Back to Main Menu
+        if (current_submenu_index == 11) {  // Back to Main Menu
             { uint32_t _dStart = millis(); while (isButtonPressed(BTN_SELECT) && millis() - _dStart < 400) delay(5); }
             in_sub_menu = false;
             is_main_menu = false;
@@ -3190,6 +3193,7 @@ void handleSubGHzSubmenuButtons() {
             case 7: runSubghzFeature(7, SweepJammer::sweepJammerSetup, SweepJammer::sweepJammerLoop); break;
             case 8: runSubghzFeature(8, SubRecord::subRecordSetup,   SubRecord::subRecordLoop);   break;
             case 9: runSubghzFeature(9, SubSendCode::subSendCodeSetup, SubSendCode::subSendCodeLoop); break;
+            case 10: runSubghzFeature(10, SubKeeloq::subKeeloqSetup, SubKeeloq::subKeeloqLoop); break;
         }
     }
 
@@ -3218,7 +3222,7 @@ void handleSubGHzSubmenuButtons() {
                 displaySubmenu();
                 delay(200);
 
-                if (current_submenu_index == 10) {  // Back to Main Menu
+                if (current_submenu_index == 11) {  // Back to Main Menu
                     in_sub_menu = false;
                     is_main_menu = false;
                     feature_active = false;
@@ -3237,6 +3241,7 @@ void handleSubGHzSubmenuButtons() {
                     case 7: runSubghzFeature(7, SweepJammer::sweepJammerSetup, SweepJammer::sweepJammerLoop); break;
                     case 8: runSubghzFeature(8, SubRecord::subRecordSetup,   SubRecord::subRecordLoop);   break;
                     case 9: runSubghzFeature(9, SubSendCode::subSendCodeSetup, SubSendCode::subSendCodeLoop); break;
+                    case 10: runSubghzFeature(10, SubKeeloq::subKeeloqSetup, SubKeeloq::subKeeloqLoop); break;
                 }
                 break;
             }
