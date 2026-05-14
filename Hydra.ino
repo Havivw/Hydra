@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <PCF8574.h>
 
+#include "version.h"
 #include "Touchscreen.h"
 #include "wificonfig.h"
 #include "bleconfig.h"
@@ -3097,6 +3098,44 @@ void handleNRFSubmenuButtons() {
 }
 
 
+// Run a SubGHz feature: setup, then loop until the user either presses
+// SELECT (to back out via the boilerplate) or the feature sets
+// feature_exit_requested itself. Centralises the 30-line state-machine
+// boilerplate that was previously copy-pasted 8 times across the button
+// path and 8 more times across the touch path of this handler.
+// Function-pointer type used inline (not as a typedef) so arduino-cli's
+// auto-generated forward declarations don't see an unknown identifier.
+static void runSubghzFeature(int idx, void (*setupFn)(), void (*loopFn)()) {
+    in_sub_menu = true;
+    feature_active = true;
+    feature_exit_requested = false;
+    setupFn();
+    while (current_submenu_index == idx && !feature_exit_requested) {
+        in_sub_menu = true;
+        loopFn();
+        if (isButtonPressed(BTN_SELECT)) {
+            in_sub_menu = true;
+            is_main_menu = false;
+            submenu_initialized = false;
+            feature_active = false;
+            feature_exit_requested = false;
+            displaySubmenu();
+            delay(200);
+            while (isButtonPressed(BTN_SELECT)) {}
+            return;
+        }
+    }
+    if (feature_exit_requested) {
+        in_sub_menu = true;
+        is_main_menu = false;
+        submenu_initialized = false;
+        feature_active = false;
+        feature_exit_requested = false;
+        displaySubmenu();
+        delay(200);
+    }
+}
+
 void handleSubGHzSubmenuButtons() {
     if (isButtonPressed(BTN_UP)) {
         current_submenu_index = (current_submenu_index - 1 + active_submenu_size) % active_submenu_size;
@@ -3132,228 +3171,17 @@ void handleSubGHzSubmenuButtons() {
             return;
         }
 
-        if (current_submenu_index == 7) {  // Sweep Jammer
-            in_sub_menu = true; feature_active = true; feature_exit_requested = false;
-            SweepJammer::sweepJammerSetup();
-            while (current_submenu_index == 7 && !feature_exit_requested) {
-                in_sub_menu = true;
-                SweepJammer::sweepJammerLoop();
-                if (isButtonPressed(BTN_SELECT)) {
-                    in_sub_menu = true; is_main_menu = false;
-                    submenu_initialized = false; feature_active = false;
-                    feature_exit_requested = false;
-                    displaySubmenu(); delay(200);
-                    while (isButtonPressed(BTN_SELECT)) {}
-                    break;
-                }
-            }
-            if (feature_exit_requested) {
-                in_sub_menu = true; is_main_menu = false;
-                submenu_initialized = false; feature_active = false;
-                feature_exit_requested = false;
-                displaySubmenu(); delay(200);
-            }
-        }
-
-        if (current_submenu_index == 4) {  // Spectrum Analyzer
-            in_sub_menu = true; feature_active = true; feature_exit_requested = false;
-            SpectrumAnalyzer::spectrumSetup();
-            while (current_submenu_index == 4 && !feature_exit_requested) {
-                in_sub_menu = true;
-                SpectrumAnalyzer::spectrumLoop();
-                if (isButtonPressed(BTN_SELECT)) {
-                    in_sub_menu = true; is_main_menu = false;
-                    submenu_initialized = false; feature_active = false;
-                    feature_exit_requested = false;
-                    displaySubmenu(); delay(200);
-                    while (isButtonPressed(BTN_SELECT)) {}
-                    break;
-                }
-            }
-            if (feature_exit_requested) {
-                in_sub_menu = true; is_main_menu = false;
-                submenu_initialized = false; feature_active = false;
-                feature_exit_requested = false;
-                displaySubmenu(); delay(200);
-            }
-        }
-
-        if (current_submenu_index == 5) {  // Freq Detector
-            in_sub_menu = true; feature_active = true; feature_exit_requested = false;
-            FreqDetector::freqDetectorSetup();
-            while (current_submenu_index == 5 && !feature_exit_requested) {
-                in_sub_menu = true;
-                FreqDetector::freqDetectorLoop();
-                if (isButtonPressed(BTN_SELECT)) {
-                    in_sub_menu = true; is_main_menu = false;
-                    submenu_initialized = false; feature_active = false;
-                    feature_exit_requested = false;
-                    displaySubmenu(); delay(200);
-                    while (isButtonPressed(BTN_SELECT)) {}
-                    break;
-                }
-            }
-            if (feature_exit_requested) {
-                in_sub_menu = true; is_main_menu = false;
-                submenu_initialized = false; feature_active = false;
-                feature_exit_requested = false;
-                displaySubmenu(); delay(200);
-            }
-        }
-
-        if (current_submenu_index == 6) {  // Replay .sub
-            in_sub_menu = true; feature_active = true; feature_exit_requested = false;
-            SubReplay::subReplaySetup();
-            while (current_submenu_index == 6 && !feature_exit_requested) {
-                in_sub_menu = true;
-                SubReplay::subReplayLoop();
-                if (isButtonPressed(BTN_SELECT)) {
-                    in_sub_menu = true; is_main_menu = false;
-                    submenu_initialized = false; feature_active = false;
-                    feature_exit_requested = false;
-                    displaySubmenu(); delay(200);
-                    while (isButtonPressed(BTN_SELECT)) {}
-                    break;
-                }
-            }
-            if (feature_exit_requested) {
-                in_sub_menu = true; is_main_menu = false;
-                submenu_initialized = false; feature_active = false;
-                feature_exit_requested = false;
-                displaySubmenu(); delay(200);
-            }
-        }
-
-        if (current_submenu_index == 3) {  // Wardrive (GPS)
-            in_sub_menu = true; feature_active = true; feature_exit_requested = false;
-            SubGhzWardrive::wardriveSetup();
-            while (current_submenu_index == 3 && !feature_exit_requested) {
-                in_sub_menu = true;
-                SubGhzWardrive::wardriveLoop();
-                if (isButtonPressed(BTN_SELECT)) {
-                    in_sub_menu = true; is_main_menu = false;
-                    submenu_initialized = false; feature_active = false;
-                    feature_exit_requested = false;
-                    displaySubmenu(); delay(200);
-                    while (isButtonPressed(BTN_SELECT)) {}
-                    break;
-                }
-            }
-            if (feature_exit_requested) {
-                in_sub_menu = true; is_main_menu = false;
-                submenu_initialized = false; feature_active = false;
-                feature_exit_requested = false;
-                displaySubmenu(); delay(200);
-            }
-        }
-
-        if (current_submenu_index == 0) {
-            pinMode(26, INPUT);
-            pinMode(16, INPUT);
-            current_submenu_index = 0;
-            in_sub_menu = true;
-            feature_active = true;
-            feature_exit_requested = false; 
-            replayat::ReplayAttackSetup();
-            while (current_submenu_index == 0 && !feature_exit_requested) {  
-                current_submenu_index = 0;
-                in_sub_menu = true;
-                replayat::ReplayAttackLoop();       
-                if (isButtonPressed(BTN_SELECT)) {
-                    in_sub_menu = true;
-                    is_main_menu = false; 
-                    submenu_initialized = false;
-                    feature_active = false;
-                    feature_exit_requested = false; 
-                    displaySubmenu(); 
-                    delay(200);            
-                    while (isButtonPressed(BTN_SELECT)) {
-                    }           
-                    break;  
-                }
-            }
-            if (feature_exit_requested) {
-                in_sub_menu = true;
-                is_main_menu = false; 
-                submenu_initialized = false;
-                feature_active = false;
-                feature_exit_requested = false; 
-                displaySubmenu(); 
-                delay(200);
-            }
-        }
-
-        if (current_submenu_index == 1) {
-            pinMode(26, INPUT);
-            pinMode(16, INPUT);
-            current_submenu_index = 1;
-            in_sub_menu = true;
-            feature_active = true;
-            feature_exit_requested = false; 
-            subjammer::subjammerSetup();
-            while (current_submenu_index == 1 && !feature_exit_requested) {  
-                current_submenu_index = 1;
-                in_sub_menu = true;
-                subjammer::subjammerLoop();       
-                if (isButtonPressed(BTN_SELECT)) {
-                    in_sub_menu = true;
-                    is_main_menu = false; 
-                    submenu_initialized = false;
-                    feature_active = false;
-                    feature_exit_requested = false; 
-                    displaySubmenu(); 
-                    delay(200);            
-                    while (isButtonPressed(BTN_SELECT)) {
-                    }           
-                    break;  
-                }
-            }
-            if (feature_exit_requested) {
-                in_sub_menu = true;
-                is_main_menu = false; 
-                submenu_initialized = false;
-                feature_active = false;
-                feature_exit_requested = false; 
-                displaySubmenu(); 
-                delay(200);
-            }
-        }
-        
-
-        if (current_submenu_index == 2) {
-            pinMode(26, INPUT);
-            pinMode(16, INPUT);
-            current_submenu_index = 2;
-            in_sub_menu = true;
-            feature_active = true;
-            feature_exit_requested = false; 
-            SavedProfile::saveSetup();
-            while (current_submenu_index == 2 && !feature_exit_requested) {  
-                current_submenu_index = 2;
-                in_sub_menu = true;
-                SavedProfile::saveLoop();       
-                if (isButtonPressed(BTN_SELECT)) {
-                    in_sub_menu = true;
-                    is_main_menu = false; 
-                    submenu_initialized = false;
-                    feature_active = false;
-                    feature_exit_requested = false; 
-                    displaySubmenu(); 
-                    delay(200);            
-                    while (isButtonPressed(BTN_SELECT)) {
-                    }           
-                    break;  
-                }
-            }
-            if (feature_exit_requested) {
-                in_sub_menu = true;
-                is_main_menu = false; 
-                submenu_initialized = false;
-                feature_active = false;
-                feature_exit_requested = false; 
-                displaySubmenu(); 
-                delay(200);
-            }
+        // Each feature's own setup() now calls subghzReleasePinsFromNrf(),
+        // so the previous in-line pinMode(26/16, INPUT) calls are gone.
+        switch (current_submenu_index) {
+            case 0: runSubghzFeature(0, replayat::ReplayAttackSetup, replayat::ReplayAttackLoop); break;
+            case 1: runSubghzFeature(1, subjammer::subjammerSetup,   subjammer::subjammerLoop);   break;
+            case 2: runSubghzFeature(2, SavedProfile::saveSetup,     SavedProfile::saveLoop);     break;
+            case 3: runSubghzFeature(3, SubGhzWardrive::wardriveSetup, SubGhzWardrive::wardriveLoop); break;
+            case 4: runSubghzFeature(4, SpectrumAnalyzer::spectrumSetup, SpectrumAnalyzer::spectrumLoop); break;
+            case 5: runSubghzFeature(5, FreqDetector::freqDetectorSetup, FreqDetector::freqDetectorLoop); break;
+            case 6: runSubghzFeature(6, SubReplay::subReplaySetup,   SubReplay::subReplayLoop);   break;
+            case 7: runSubghzFeature(7, SweepJammer::sweepJammerSetup, SweepJammer::sweepJammerLoop); break;
         }
     }
 
@@ -3389,213 +3217,16 @@ void handleSubGHzSubmenuButtons() {
                     feature_exit_requested = false;
                     displayMenu();
                     return;
-                } else if (current_submenu_index == 7) {  // Sweep Jammer
-                    in_sub_menu = true; feature_active = true; feature_exit_requested = false;
-                    SweepJammer::sweepJammerSetup();
-                    while (current_submenu_index == 7 && !feature_exit_requested) {
-                        in_sub_menu = true;
-                        SweepJammer::sweepJammerLoop();
-                        if (isButtonPressed(BTN_SELECT)) {
-                            in_sub_menu = true; is_main_menu = false;
-                            submenu_initialized = false; feature_active = false;
-                            feature_exit_requested = false;
-                            displaySubmenu(); delay(200);
-                            while (isButtonPressed(BTN_SELECT)) {}
-                            break;
-                        }
-                    }
-                    if (feature_exit_requested) {
-                        in_sub_menu = true; is_main_menu = false;
-                        submenu_initialized = false; feature_active = false;
-                        feature_exit_requested = false;
-                        displaySubmenu(); delay(200);
-                    }
-                } else if (current_submenu_index == 3) {  // Wardrive (GPS)
-                    in_sub_menu = true; feature_active = true; feature_exit_requested = false;
-                    SubGhzWardrive::wardriveSetup();
-                    while (current_submenu_index == 3 && !feature_exit_requested) {
-                        in_sub_menu = true;
-                        SubGhzWardrive::wardriveLoop();
-                        if (isButtonPressed(BTN_SELECT)) {
-                            in_sub_menu = true; is_main_menu = false;
-                            submenu_initialized = false; feature_active = false;
-                            feature_exit_requested = false;
-                            displaySubmenu(); delay(200);
-                            while (isButtonPressed(BTN_SELECT)) {}
-                            break;
-                        }
-                    }
-                    if (feature_exit_requested) {
-                        in_sub_menu = true; is_main_menu = false;
-                        submenu_initialized = false; feature_active = false;
-                        feature_exit_requested = false;
-                        displaySubmenu(); delay(200);
-                    }
-                } else if (current_submenu_index == 4) {  // Spectrum Analyzer
-                    in_sub_menu = true; feature_active = true; feature_exit_requested = false;
-                    SpectrumAnalyzer::spectrumSetup();
-                    while (current_submenu_index == 4 && !feature_exit_requested) {
-                        in_sub_menu = true;
-                        SpectrumAnalyzer::spectrumLoop();
-                        if (isButtonPressed(BTN_SELECT)) {
-                            in_sub_menu = true; is_main_menu = false;
-                            submenu_initialized = false; feature_active = false;
-                            feature_exit_requested = false;
-                            displaySubmenu(); delay(200);
-                            while (isButtonPressed(BTN_SELECT)) {}
-                            break;
-                        }
-                    }
-                    if (feature_exit_requested) {
-                        in_sub_menu = true; is_main_menu = false;
-                        submenu_initialized = false; feature_active = false;
-                        feature_exit_requested = false;
-                        displaySubmenu(); delay(200);
-                    }
-                } else if (current_submenu_index == 5) {  // Freq Detector
-                    in_sub_menu = true; feature_active = true; feature_exit_requested = false;
-                    FreqDetector::freqDetectorSetup();
-                    while (current_submenu_index == 5 && !feature_exit_requested) {
-                        in_sub_menu = true;
-                        FreqDetector::freqDetectorLoop();
-                        if (isButtonPressed(BTN_SELECT)) {
-                            in_sub_menu = true; is_main_menu = false;
-                            submenu_initialized = false; feature_active = false;
-                            feature_exit_requested = false;
-                            displaySubmenu(); delay(200);
-                            while (isButtonPressed(BTN_SELECT)) {}
-                            break;
-                        }
-                    }
-                    if (feature_exit_requested) {
-                        in_sub_menu = true; is_main_menu = false;
-                        submenu_initialized = false; feature_active = false;
-                        feature_exit_requested = false;
-                        displaySubmenu(); delay(200);
-                    }
-                } else if (current_submenu_index == 6) {  // Replay .sub
-                    in_sub_menu = true; feature_active = true; feature_exit_requested = false;
-                    SubReplay::subReplaySetup();
-                    while (current_submenu_index == 6 && !feature_exit_requested) {
-                        in_sub_menu = true;
-                        SubReplay::subReplayLoop();
-                        if (isButtonPressed(BTN_SELECT)) {
-                            in_sub_menu = true; is_main_menu = false;
-                            submenu_initialized = false; feature_active = false;
-                            feature_exit_requested = false;
-                            displaySubmenu(); delay(200);
-                            while (isButtonPressed(BTN_SELECT)) {}
-                            break;
-                        }
-                    }
-                    if (feature_exit_requested) {
-                        in_sub_menu = true; is_main_menu = false;
-                        submenu_initialized = false; feature_active = false;
-                        feature_exit_requested = false;
-                        displaySubmenu(); delay(200);
-                    }
-                } else if (current_submenu_index == 0) {
-                    pinMode(26, INPUT);
-                    pinMode(16, INPUT);
-                    current_submenu_index = 0;
-                    in_sub_menu = true;
-                    feature_active = true;
-                    feature_exit_requested = false; 
-                    replayat::ReplayAttackSetup();
-                    while (current_submenu_index == 0 && !feature_exit_requested) {  
-                        current_submenu_index = 0;
-                        in_sub_menu = true;
-                        replayat::ReplayAttackLoop();       
-                        if (isButtonPressed(BTN_SELECT)) {
-                            in_sub_menu = true;
-                            is_main_menu = false; 
-                            submenu_initialized = false;
-                            feature_active = false;
-                            feature_exit_requested = false; 
-                            displaySubmenu(); 
-                            delay(200);            
-                            while (isButtonPressed(BTN_SELECT)) {
-                            }           
-                            break;  
-                        }
-                    }
-                    if (feature_exit_requested) {
-                        in_sub_menu = true;
-                        is_main_menu = false; 
-                        submenu_initialized = false;
-                        feature_active = false;
-                        feature_exit_requested = false; 
-                        displaySubmenu(); 
-                        delay(200);
-                    }
-                } else if (current_submenu_index == 2) {
-                    pinMode(26, INPUT);
-                    pinMode(16, INPUT);
-                    current_submenu_index = 2;
-                    in_sub_menu = true;
-                    feature_active = true;
-                    feature_exit_requested = false; 
-                    SavedProfile::saveSetup();
-                    while (current_submenu_index == 2 && !feature_exit_requested) {  
-                        current_submenu_index = 2;
-                        in_sub_menu = true;
-                        SavedProfile::saveLoop();       
-                        if (isButtonPressed(BTN_SELECT)) {
-                            in_sub_menu = true;
-                            is_main_menu = false; 
-                            submenu_initialized = false;
-                            feature_active = false;
-                            feature_exit_requested = false; 
-                            displaySubmenu(); 
-                            delay(200);            
-                            while (isButtonPressed(BTN_SELECT)) {
-                            }           
-                            break;  
-                        }
-                    }                  
-                    if (feature_exit_requested) {
-                        in_sub_menu = true;
-                        is_main_menu = false; 
-                        submenu_initialized = false;
-                        feature_active = false;
-                        feature_exit_requested = false; 
-                        displaySubmenu(); 
-                        delay(200);
-                    }
-                } else if (current_submenu_index == 1) {
-                    pinMode(26, INPUT);
-                    pinMode(16, INPUT);
-                    current_submenu_index = 1;
-                    in_sub_menu = true;
-                    feature_active = true;
-                    feature_exit_requested = false; 
-                    subjammer::subjammerSetup();
-                    while (current_submenu_index == 1 && !feature_exit_requested) {  
-                        current_submenu_index = 1;
-                        in_sub_menu = true;
-                        subjammer::subjammerLoop();       
-                        if (isButtonPressed(BTN_SELECT)) {
-                            in_sub_menu = true;
-                            is_main_menu = false; 
-                            submenu_initialized = false;
-                            feature_active = false;
-                            feature_exit_requested = false; 
-                            displaySubmenu(); 
-                            delay(200);            
-                            while (isButtonPressed(BTN_SELECT)) {
-                            }           
-                            break;  
-                        }
-                    }                  
-                    if (feature_exit_requested) {
-                        in_sub_menu = true;
-                        is_main_menu = false; 
-                        submenu_initialized = false;
-                        feature_active = false;
-                        feature_exit_requested = false; 
-                        displaySubmenu(); 
-                        delay(200);
-                    }
+                }
+                switch (current_submenu_index) {
+                    case 0: runSubghzFeature(0, replayat::ReplayAttackSetup, replayat::ReplayAttackLoop); break;
+                    case 1: runSubghzFeature(1, subjammer::subjammerSetup,   subjammer::subjammerLoop);   break;
+                    case 2: runSubghzFeature(2, SavedProfile::saveSetup,     SavedProfile::saveLoop);     break;
+                    case 3: runSubghzFeature(3, SubGhzWardrive::wardriveSetup, SubGhzWardrive::wardriveLoop); break;
+                    case 4: runSubghzFeature(4, SpectrumAnalyzer::spectrumSetup, SpectrumAnalyzer::spectrumLoop); break;
+                    case 5: runSubghzFeature(5, FreqDetector::freqDetectorSetup, FreqDetector::freqDetectorLoop); break;
+                    case 6: runSubghzFeature(6, SubReplay::subReplaySetup,   SubReplay::subReplayLoop);   break;
+                    case 7: runSubghzFeature(7, SweepJammer::sweepJammerSetup, SweepJammer::sweepJammerLoop); break;
                 }
                 break;
             }
@@ -3956,7 +3587,7 @@ void handleAboutPage() {
   tft.println("- Developed by: Claude");
   text_y += lineHeight;
   tft.setCursor(text_x, text_y);
-  tft.println("- Version: 0.0.1");
+  tft.println("- Version: " HYDRA_VERSION);
   text_y += lineHeight;
 
 

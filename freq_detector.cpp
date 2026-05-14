@@ -8,8 +8,8 @@
 #include "utils.h"
 #include "Touchscreen.h"
 #include "subconfig.h"
-
-#define DARK_GRAY 0x4208
+#include "shared.h"
+#include "sub_shared.h"
 
 namespace FreqDetector {
 
@@ -118,6 +118,8 @@ static void drawTable() {
 }
 
 void freqDetectorSetup() {
+  subghzReleasePinsFromNrf();
+
   WardriveConfig::ensureInit();
   rebuildActive();
 

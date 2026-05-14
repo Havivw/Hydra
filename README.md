@@ -57,7 +57,7 @@ multiple-definition errors.
 | NRF24 #1 | CE / CSN | 16 / 17 |
 | NRF24 #2 | CE / CSN | 26 / 27 |
 | NRF24 #3 | CE / CSN | 4 / 5 |
-| CC1101 (sub-GHz) | CSN, GDO0, GDO2 | 27 / 26 / 16 |
+| CC1101 (sub-GHz) | SCK/MISO/MOSI/CSN/GDO0/GDO2 | 18 / 19 / 23 / 5 / 26 / 16 |
 | PCF8574 (buttons) | I²C SDA / SCL | 21 / 22 |
 | Battery monitor | ADC | 36 |
 | GPS UART (optional, header) | RX / TX | 32 / 25 ⚠ |
@@ -66,12 +66,15 @@ multiple-definition errors.
 ### Pin conflicts to remember
 
 - **GPIO 4:** TFT backlight AND NRF24 #3 CE.
-- **GPIO 5:** SD CS AND NRF24 #3 CSN. SD and NRF24 #3 are mutually exclusive
-  on this board.
+- **GPIO 5:** SD CS AND NRF24 #3 CSN AND CC1101 CSN. The CC1101 driver uses
+  the standard ESP32 VSPI default (SS=5) — the firmware never calls
+  `setSpiPin()` to override it. So CC1101 and SD share the same CS line,
+  and the order of `SD.begin(5)` vs `ELECHOUSE_cc1101.Init()` matters in
+  every SubGHz feature that also touches the SD card.
 - **GPIO 16:** NRF24 #1 CE AND CC1101 GDO2.
 - **GPIO 26:** NRF24 #2 CE AND CC1101 GDO0.
-- **GPIO 27:** NRF24 #2 CSN AND CC1101 CSN. 2.4 GHz and sub-GHz radios are
-  mutually exclusive.
+- **GPIO 27:** NRF24 #2 CSN. (Not CC1101 CSN — older docs claimed this; the
+  schematic and the working ELECHOUSE library defaults disagree.)
 - **GPIO 25 / 32:** GPS UART2 AND touchscreen CLK/MOSI. See "GPS kills touch"
   below.
 

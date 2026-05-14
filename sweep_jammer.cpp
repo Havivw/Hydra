@@ -9,15 +9,10 @@
 #include "Touchscreen.h"
 
 #include "subconfig.h"  // brings in ELECHOUSE_CC1101_ESP32DIV + CC1101_TXFIFO/STX
+#include "shared.h"
+#include "sub_shared.h"
 
-#define TX_PIN 26  // CC1101 GDO0, matches subghz.cpp
-
-#define DARK_GRAY 0x4208
-
-#define BTN_UP    6
-#define BTN_DOWN  3
-#define BTN_LEFT  4
-#define BTN_RIGHT 5
+#define TX_PIN CC1101_GDO0_PIN
 
 namespace SweepJammer {
 
@@ -98,6 +93,8 @@ static void drawBody() {
 }
 
 void sweepJammerSetup() {
+  subghzReleasePinsFromNrf();
+
   tft.fillScreen(TFT_BLACK);
   setupTouchscreen();
 

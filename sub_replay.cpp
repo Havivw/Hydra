@@ -7,6 +7,8 @@
 #include "utils.h"
 #include "Touchscreen.h"
 #include "subconfig.h"
+#include "shared.h"
+#include "sub_shared.h"
 
 #include <FS.h>
 #include <SD.h>
@@ -14,16 +16,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define DARK_GRAY 0x4208
-
-#define BTN_UP     6
-#define BTN_DOWN   3
-#define BTN_LEFT   4
-#define BTN_RIGHT  5
-
-// CC1101 GDO0 on DIV v1. cifertech's subghz.cpp defines TX_PIN 26 / RX_PIN 16;
-// GDO0 (TX_PIN) is what we bit-bang during OOK async TX.
-#define HYDRA_CC1101_GDO0 26
+// Button pins, DARK_GRAY, and CC1101_GDO0_PIN come from shared.h + sub_shared.h.
 
 namespace SubReplay {
 
@@ -199,11 +192,11 @@ static void cc1101TxPrep() {
   ELECHOUSE_cc1101.setPktFormat(3);   // async serial mode
   ELECHOUSE_cc1101.setPA(12);
   ELECHOUSE_cc1101.SetTx();
-  pinMode(HYDRA_CC1101_GDO0, OUTPUT);
+  pinMode(CC1101_GDO0_PIN, OUTPUT);
 }
 
 static void cc1101TxDone() {
-  digitalWrite(HYDRA_CC1101_GDO0, LOW);
+  digitalWrite(CC1101_GDO0_PIN, LOW);
   ELECHOUSE_cc1101.setSidle();
 }
 
@@ -214,11 +207,11 @@ static void bitbangAllSamples() {
     int s = sampleBuf[txIdx];
     int level = (s >= 0) ? HIGH : LOW;
     int dur = s >= 0 ? s : -s;
-    digitalWrite(HYDRA_CC1101_GDO0, level);
+    digitalWrite(CC1101_GDO0_PIN, level);
     if (dur > 0) delayMicroseconds(dur);
 
     // Check abort every ~64 samples (cheap PCF8574 read)
-    if ((txIdx & 0x3F) == 0 && !pcf.digitalRead(7 /*BTN_SELECT pin*/)) break;
+    if ((txIdx & 0x3F) == 0 && !pcf.digitalRead(BTN_SELECT)) break;
   }
 }
 
@@ -398,6 +391,8 @@ static void ensureCursorVisible() {
 // PUBLIC API
 // ============================================================
 void subReplaySetup() {
+  subghzReleasePinsFromNrf();
+
   tft.fillScreen(TFT_BLACK);
   setupTouchscreen();
 
@@ -406,7 +401,14 @@ void subReplaySetup() {
   pcf.pinMode(BTN_LEFT, INPUT_PULLUP);
   pcf.pinMode(BTN_RIGHT, INPUT_PULLUP);
 
-  // Mount SD first (same VSPI ordering issue as wardrive)
+  // Mount SD first. Touchscreen + NRF24 features earlier in the session
+  // may have left VSPI pinned elsewhere; force the bus back onto its
+  // canonical pins, then drive SD CS high once to give the card a clean
+  // edge before SD.begin() asserts it. See memory feedback_sd_vspi_repin.
+  pinMode(5, OUTPUT);
+  digitalWrite(5, HIGH);
+  delay(5);
+  SPI.begin(18, 19, 23, 5);
   sdReady = SD.begin(5);
   if (sdReady) scanSubDir();
 

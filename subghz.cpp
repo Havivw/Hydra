@@ -1,30 +1,44 @@
 #include "subconfig.h"
 #include "shared.h"
+#include "sub_shared.h"
 #include "icon.h"
 #include "Touchscreen.h"
 
 /*
  * ReplayAttack
- * 
- * 
- * 
+ *
+ * Live RCSwitch capture of decoded OOK keyfob protocols. The user moves
+ * across the SUB_DEFAULT_FREQS list, lets the radio receive, and the
+ * library decodes recognised protocols (1..N from rc-switch). Captured
+ * value + bit length + protocol + freq index land in EEPROM, and the user
+ * can replay them or save into the SavedProfile slot list.
+ *
+ * The FFT-backed RSSI waterfall the original cifertech code drew during
+ * receive was removed — Spectrum Analyzer + Freq Detector already cover
+ * that need, and running an FFT in the receive loop competed with the
+ * CC1101 SPI for no real benefit.
  */
 
 namespace replayat {
 
-#define EEPROM_SIZE 1440
-#define ADDR_VALUE 1280    // 4 bytes
-#define ADDR_BITLEN 1284   // 2 bytes
-#define ADDR_PROTO 1286    // 2 bytes
-#define ADDR_FREQ 1288     // 4 bytes 
+// Shorthands so the older code below reads the same. Centralised so
+// renames keep working without touching every call site.
+#define EEPROM_SIZE         SUB_EEPROM_SIZE
+#define ADDR_VALUE          SUB_ADDR_VALUE
+#define ADDR_BITLEN         SUB_ADDR_BITLEN
+#define ADDR_PROTO          SUB_ADDR_PROTO
+#define ADDR_FREQ           SUB_ADDR_FREQ
+#define ADDR_PROFILE_START  SUB_ADDR_PROFILE_START
+#define MAX_PROFILES        SUB_MAX_PROFILES
+#define MAX_NAME_LENGTH     SUB_MAX_NAME_LENGTH
+#define Profile             SubProfile
+#define mySwitch            subSwitch
+#define subghz_frequency_list SUB_DEFAULT_FREQS
 
 #define SCREEN_WIDTH  240
-#define SCREENHEIGHT 320
 #define SCREEN_HEIGHT 320
 
 static bool uiDrawn = false;
-
-#define MAX_NAME_LENGTH 16 // Maximum length for profile name (including null terminator)
 
 // Keyboard layout (4 rows)
 const char* keyboardLayout[] = {
@@ -53,64 +67,19 @@ static bool cursorState = true;
 static unsigned long lastCursorBlink = 0;
 const unsigned long cursorBlinkInterval = 500;
 
-struct Profile {
-    uint32_t frequency;
-    unsigned long value;
-    int bitLength;
-    int protocol;
-    char name[MAX_NAME_LENGTH]; // Custom name field
-};
-
-#define PROFILE_SIZE sizeof(Profile) // Size of the updated Profile struct
-#define ADDR_PROFILE_START 1300
-#define MAX_PROFILES 5
-#define ADDR_PROFILE_COUNT 0 
-
-#define MAX_PROFILES 5         
+#define PROFILE_SIZE sizeof(SubProfile)
 
 int profileCount = 0;
 
-RCSwitch mySwitch = RCSwitch();
-arduinoFFT FFTSUB = arduinoFFT();
+#define RX_PIN CC1101_GDO2_PIN
+#define TX_PIN CC1101_GDO0_PIN
 
-const uint16_t samplesSUB = 256; 
-const double FrequencySUB = 5000;
+unsigned long receivedValue = 0;
+int receivedBitLength = 0;
+int receivedProtocol = 0;
+const int rssi_threshold = -75;
 
-double attenuation_num = 10;
-
-unsigned int sampling_period;
-unsigned long micro_s;
-
-double vRealSUB[samplesSUB];
-double vImagSUB[samplesSUB];
-
-byte red[128], green[128], blue[128];
-
-unsigned int epochSUB = 0;
-unsigned int colorcursor = 2016;
-
-int rssi;
-
-#define RX_PIN 16         
-#define TX_PIN 26 
-
-#define BTN_LEFT   4
-#define BTN_RIGHT  5
-#define BTN_UP     6
-#define BTN_DOWN   3
-
-unsigned long receivedValue = 0; 
-int receivedBitLength = 0;       
-int receivedProtocol = 0;       
-const int rssi_threshold = -75; 
-
-static const uint32_t subghz_frequency_list[] = {
-    300000000, 303875000, 304250000, 310000000, 315000000, 318000000,  
-    390000000, 418000000, 433075000, 433420000, 433920000, 434420000, 
-    434775000, 438900000, 868350000, 915000000, 925000000
-};
-
-int currentFrequencyIndex = 0; 
+int currentFrequencyIndex = 0;
 int yshift = 20;
 
 
@@ -362,75 +331,6 @@ void sendSignal() {
     updateDisplay();
 }
 
-void do_sampling() {
-  
-  micro_s = micros();
-
-  #define ALPHA 0.2  
-  float ewmaRSSI = -50;  
-
-for (int i = 0; i < samplesSUB; i++) {
-    int rssi = ELECHOUSE_cc1101.getRssi();
-    rssi += 100;  
-
-    ewmaRSSI = (ALPHA * rssi) + ((1 - ALPHA) * ewmaRSSI);
-
-    vRealSUB[i] = ewmaRSSI * 2;
-    vImagSUB[i] = 1;
-
-    while (micros() < micro_s + sampling_period);
-    micro_s += sampling_period;
-}
-
-  double mean = 0;
-  
-  for (uint16_t i = 0; i < samplesSUB; i++)
-        mean += vRealSUB[i];
-        mean /= samplesSUB;
-  for (uint16_t i = 0; i < samplesSUB; i++)
-        vRealSUB[i] -= mean;
-    
-  micro_s = micros();
-  
-  FFTSUB.Windowing(vRealSUB, samplesSUB, FFT_WIN_TYP_HAMMING, FFT_FORWARD); 
-  FFTSUB.Compute(vRealSUB, vImagSUB, samplesSUB, FFT_FORWARD); 
-  FFTSUB.ComplexToMagnitude(vRealSUB, vImagSUB, samplesSUB); 
-
-unsigned int left_x = 120;
-unsigned int graph_y_offset = 81; 
-int max_k = 0;
-
-for (int j = 0; j < samplesSUB >> 1; j++) {
-    int k = vRealSUB[j] / attenuation_num; 
-    if (k > max_k)
-        max_k = k; 
-    if (k > 127) k = 127; 
-
-    unsigned int color = red[k] << 11 | green[k] << 5 | blue[k];
-    unsigned int vertical_x = left_x + j; 
-
-    tft.drawPixel(vertical_x, epochSUB + graph_y_offset, color); 
-}
-
-for (int j = 0; j < samplesSUB >> 1; j++) {
-    int k = vRealSUB[j] / attenuation_num;
-    if (k > max_k)
-        max_k = k;
-    if (k > 127) k = 127;
-
-    unsigned int color = red[k] << 11 | green[k] << 5 | blue[k];
-    unsigned int mirrored_x = left_x - j; 
-    tft.drawPixel(mirrored_x, epochSUB + graph_y_offset, color);
-}
-
-  double tattenuation = max_k / 127.0;
-  
-  if (tattenuation > attenuation_num)
-    attenuation_num = tattenuation;
-                     
-    delay(10);
-}
-
 void readProfileCount() {
     EEPROM.get(ADDR_PROFILE_START - sizeof(int), profileCount);
     if (profileCount > MAX_PROFILES || profileCount < 0) {
@@ -535,7 +435,7 @@ void runUI() {
 
             switch (activeIcon) {
                 case 0:
-                    currentFrequencyIndex = (currentFrequencyIndex + 1) % (sizeof(subghz_frequency_list) / sizeof(subghz_frequency_list[0]));
+                    currentFrequencyIndex = (currentFrequencyIndex + 1) % SUB_DEFAULT_FREQ_COUNT;
                     ELECHOUSE_cc1101.setSidle();
                     ELECHOUSE_cc1101.setMHZ(subghz_frequency_list[currentFrequencyIndex] / 1000000.0);
                     ELECHOUSE_cc1101.SetRx();
@@ -544,7 +444,7 @@ void runUI() {
                     updateDisplay();
                     break;
                 case 1: 
-                    currentFrequencyIndex = (currentFrequencyIndex - 1 + (sizeof(subghz_frequency_list) / sizeof(subghz_frequency_list[0]))) % (sizeof(subghz_frequency_list) / sizeof(subghz_frequency_list[0]));
+                    currentFrequencyIndex = (currentFrequencyIndex - 1 + SUB_DEFAULT_FREQ_COUNT) % SUB_DEFAULT_FREQ_COUNT;
                     ELECHOUSE_cc1101.setSidle();
                     ELECHOUSE_cc1101.setMHZ(subghz_frequency_list[currentFrequencyIndex] / 1000000.0);
                     ELECHOUSE_cc1101.SetRx();
@@ -576,7 +476,7 @@ void runUI() {
         if (ts.touched() && feature_active) { 
             TS_Point p = ts.getPoint();
             int x = ::map(p.x, 300, 3800, 0, SCREEN_WIDTH - 1);
-            int y = ::map(p.y, 3800, 300, 0, SCREENHEIGHT - 1);
+            int y = ::map(p.y, 3800, 300, 0, SCREEN_HEIGHT - 1);
 
             if (y > STATUS_BAR_Y_OFFSET && y < STATUS_BAR_Y_OFFSET + STATUS_BAR_HEIGHT) {
                 for (int i = 0; i < ICON_NUM; i++) {
@@ -596,97 +496,57 @@ void runUI() {
     }
 }
 
-void ReplayAttackSetup() {  
+void ReplayAttackSetup() {
   Serial.begin(115200);
-  
-  tft.fillScreen(TFT_BLACK); 
+
+  // Release GDO0/GDO2 pins from any prior NRF24 use before the CC1101
+  // driver Init() takes them over.
+  subghzReleasePinsFromNrf();
+
+  tft.fillScreen(TFT_BLACK);
   tft.setRotation(0);
 
   setupTouchscreen();
 
-  ELECHOUSE_cc1101.Init(); 
-  
-  //ELECHOUSE_cc1101.setModulation(0);
-  //ELECHOUSE_cc1101.setRxBW(812);    
-  
+  ELECHOUSE_cc1101.Init();
   ELECHOUSE_cc1101.SetRx();
 
-  mySwitch.enableReceive(RX_PIN); 
-  mySwitch.enableTransmit(TX_PIN); 
+  subSwitch.enableReceive(RX_PIN);
+  subSwitch.enableTransmit(TX_PIN);
 
-  EEPROM.begin(EEPROM_SIZE);  
-  readProfileCount();        
+  EEPROM.begin(EEPROM_SIZE);
+  readProfileCount();
 
   EEPROM.get(ADDR_VALUE, receivedValue);
   EEPROM.get(ADDR_BITLEN, receivedBitLength);
   EEPROM.get(ADDR_PROTO, receivedProtocol);
   EEPROM.get(ADDR_FREQ, currentFrequencyIndex);
-      
-  //ELECHOUSE_cc1101.setSpiPin (SCK, MISO, MOSI, CSN);
-  //ELECHOUSE_cc1101.setSpiPin (18, 19, 23, 27);
 
-  //ELECHOUSE_cc1101.setGDO(gdo0, gdo2);
-  //ELECHOUSE_cc1101.setGDO(26, 16);
-  //mySwitch.enableReceive(16); 
-  //mySwitch.enableTransmit(26); 
-  
   pcf.pinMode(BTN_LEFT, INPUT_PULLUP);
   pcf.pinMode(BTN_RIGHT, INPUT_PULLUP);
   pcf.pinMode(BTN_UP, INPUT_PULLUP);
   pcf.pinMode(BTN_DOWN, INPUT_PULLUP);
 
-  sampling_period = round(1000000*(1.0/FrequencySUB));
-
-  for (int i = 0; i < 32; i++) {
-    red[i] = i / 2;
-    green[i] = 0;
-    blue[i] = i;
-  }
-  for (int i = 32; i < 64; i++) {
-    red[i] = i / 2;
-    green[i] = 0;
-    blue[i] = 63 - i;
-  }
-  for (int i = 64; i < 96; i++) {
-    red[i] = 31;
-    green[i] = (i - 64) * 2;
-    blue[i] = 0;        
-  }
-  for (int i = 96; i < 128; i++) {
-    red[i] = 31;
-    green[i] = 63;
-    blue[i] = i - 96;        
-  }
-  
-   float currentBatteryVoltage = readBatteryVoltage();
-   drawStatusBar(currentBatteryVoltage, false);
-   updateDisplay();
-   uiDrawn = false;
-
+  float currentBatteryVoltage = readBatteryVoltage();
+  drawStatusBar(currentBatteryVoltage, false);
+  updateDisplay();
+  uiDrawn = false;
 }
 
 void ReplayAttackLoop() {
 
     runUI();
-    //updateStatusBar();
-  
+
     static unsigned long lastDebounceTime = 0;
     const unsigned long debounceDelay = 200;
 
     int btnLeftState = pcf.digitalRead(BTN_LEFT);
     int btnRightState = pcf.digitalRead(BTN_RIGHT);
-    int btnSelectState = pcf.digitalRead(BTN_UP);
-    int btndownState = pcf.digitalRead(BTN_DOWN);
-    
-    do_sampling();
-    delay(10);
-    epochSUB++;
-    
-    if (epochSUB >= tft.width())
-      epochSUB = 0;
+    int btnUpState = pcf.digitalRead(BTN_UP);
+    int btnDownState = pcf.digitalRead(BTN_DOWN);
 
     if (btnRightState == LOW && millis() - lastDebounceTime > debounceDelay) {
-        currentFrequencyIndex = (currentFrequencyIndex + 1) % (sizeof(subghz_frequency_list) / sizeof(subghz_frequency_list[0]));
+        currentFrequencyIndex = (currentFrequencyIndex + 1) % SUB_DEFAULT_FREQ_COUNT;
         ELECHOUSE_cc1101.setSidle();
         ELECHOUSE_cc1101.setMHZ(subghz_frequency_list[currentFrequencyIndex] / 1000000.0);
         ELECHOUSE_cc1101.SetRx();
@@ -697,7 +557,7 @@ void ReplayAttackLoop() {
     }
     
     if (btnLeftState == LOW && millis() - lastDebounceTime > debounceDelay) {       
-        currentFrequencyIndex = (currentFrequencyIndex - 1 + (sizeof(subghz_frequency_list) / sizeof(subghz_frequency_list[0]))) % (sizeof(subghz_frequency_list) / sizeof(subghz_frequency_list[0]));
+        currentFrequencyIndex = (currentFrequencyIndex - 1 + SUB_DEFAULT_FREQ_COUNT) % SUB_DEFAULT_FREQ_COUNT;
         ELECHOUSE_cc1101.setSidle();
         ELECHOUSE_cc1101.setMHZ(subghz_frequency_list[currentFrequencyIndex] / 1000000.0);
         ELECHOUSE_cc1101.SetRx();
@@ -721,15 +581,15 @@ void ReplayAttackLoop() {
         mySwitch.resetAvailable(); 
     }
 
-     if (btnSelectState == LOW && receivedValue != 0 && millis() - lastDebounceTime > debounceDelay) {
+    if (btnUpState == LOW && receivedValue != 0 && millis() - lastDebounceTime > debounceDelay) {
         sendSignal();
         lastDebounceTime = millis();
     }
-     if (pcf.digitalRead(BTN_DOWN) == LOW && millis() - lastDebounceTime > debounceDelay) {
-         saveProfile();
-         lastDebounceTime = millis();
+    if (btnDownState == LOW && millis() - lastDebounceTime > debounceDelay) {
+        saveProfile();
+        lastDebounceTime = millis();
     }
-  } 
+}
 }
 
 
@@ -742,35 +602,22 @@ void ReplayAttackLoop() {
 
 namespace SavedProfile {
 
+// Same aliasing as the replayat namespace — keeps the body code readable
+// without repeating every SUB_* constant.
+#define RX_PIN              CC1101_GDO2_PIN
+#define TX_PIN              CC1101_GDO0_PIN
+#define EEPROM_SIZE         SUB_EEPROM_SIZE
+#define ADDR_PROFILE_START  SUB_ADDR_PROFILE_START
+#define MAX_PROFILES        SUB_MAX_PROFILES
+#define MAX_NAME_LENGTH     SUB_MAX_NAME_LENGTH
+#define Profile             SubProfile
+#define mySwitch            subSwitch
+#define PROFILE_SIZE        sizeof(SubProfile)
+
+#define SCREEN_WIDTH  240
+#define SCREEN_HEIGHT 320
+
 static bool uiDrawn = false;
-
-#define RX_PIN 16         
-#define TX_PIN 26        
-
-#define EEPROM_SIZE 1440  // Increased to accommodate larger profiles
-#define ADDR_PROFILE_START 1300 
-#define MAX_PROFILES 5         
-#define MAX_NAME_LENGTH 16 // Maximum length for profile name (including null terminator)
-
-#define BTN_UP     6
-#define BTN_DOWN   3
-#define BTN_LEFT   4
-#define BTN_RIGHT  5
-
-#define SCREEN_WIDTH 240 
-#define SCREEN_HEIGHT 320 
-
-RCSwitch mySwitch = RCSwitch();
-
-struct Profile {
-    uint32_t frequency;
-    unsigned long value;
-    int bitLength;
-    int protocol;
-    char name[MAX_NAME_LENGTH]; // Custom name field
-};
-
-#define PROFILE_SIZE sizeof(Profile) // Size of the updated Profile struct
 
 int profileCount = 0;
 int currentProfileIndex = 0;
@@ -1030,6 +877,8 @@ void runUI() {
 
 void saveSetup() {
     Serial.begin(115200);
+    subghzReleasePinsFromNrf();
+
     EEPROM.begin(EEPROM_SIZE);
     loadProfileCount();
     printProfiles();
@@ -1066,7 +915,7 @@ void saveLoop() {
 
     int btnLeftState = pcf.digitalRead(BTN_LEFT);
     int btnRightState = pcf.digitalRead(BTN_RIGHT);
-    int btnSelectState = pcf.digitalRead(BTN_DOWN);
+    int btnDownState = pcf.digitalRead(BTN_DOWN);
     int btnUpState = pcf.digitalRead(BTN_UP);
 
     if (profileCount > 0) {
@@ -1082,7 +931,10 @@ void saveLoop() {
             lastDebounceTime = millis();
         }
 
-        if (btnSelectState == LOW && millis() - lastDebounceTime > debounceDelay) {
+        // BTN_DOWN transmits the highlighted profile. (Marauder-style "fire"
+        // button — the dedicated PCF8574 SELECT pin is reserved by
+        // Hydra.ino for menu navigation, so feature screens can't use it.)
+        if (btnDownState == LOW && millis() - lastDebounceTime > debounceDelay) {
             transmitProfile(currentProfileIndex);
             lastDebounceTime = millis();
         }
@@ -1111,36 +963,28 @@ void saveLoop() {
 
 namespace subjammer {
 
+#define TX_PIN              CC1101_GDO0_PIN
+
+// Was SCREEN_HEIGHT 64 — a long-standing typo that runUI() papered over
+// by redefining it back to 320 inside the function body. Just write 320.
+#define SCREEN_WIDTH  240
+#define SCREEN_HEIGHT 320
+
 static bool uiDrawn = false;
 
 static unsigned long lastDebounceTime = 0;
 const unsigned long debounceDelay = 200;
 
-#define TX_PIN 26        
- 
-#define SCREEN_WIDTH 240
-#define SCREEN_HEIGHT 64
-
-#define BTN_LEFT   4
-#define BTN_RIGHT  5
-#define BTN_DOWN   3
-#define BTN_UP     6
-
-
 bool jammingRunning = false;
 bool continuousMode = true;
-bool autoMode = false;     
+bool autoMode = false;
 unsigned long lastSweepTime = 0;
-const unsigned long sweepInterval = 1000; 
+const unsigned long sweepInterval = 1000;
 
-static const uint32_t subghz_frequency_list[] = {
-    300000000, 303875000, 304250000, 310000000, 315000000, 318000000,  
-    390000000, 418000000, 433075000, 433420000, 433920000, 434420000, 
-    434775000, 438900000, 868350000, 915000000, 925000000
-};
-const int numFrequencies = sizeof(subghz_frequency_list) / sizeof(subghz_frequency_list[0]);
-int currentFrequencyIndex = 4; 
-float targetFrequency = subghz_frequency_list[currentFrequencyIndex] / 1000000.0;
+#define subghz_frequency_list SUB_DEFAULT_FREQS
+const int numFrequencies = SUB_DEFAULT_FREQ_COUNT;
+int currentFrequencyIndex = 4;
+float targetFrequency = SUB_DEFAULT_FREQS[currentFrequencyIndex] / 1000000.0;
 
 
 void updateDisplay() {
@@ -1200,12 +1044,12 @@ void updateDisplay() {
 
 
 void runUI() {
-    #define SCREEN_WIDTH  240
-    #define SCREENHEIGHT 320
+    // SCREEN_WIDTH/SCREEN_HEIGHT come from the namespace-level defines
+    // above. Touch axis remap below uses SCREEN_HEIGHT directly.
     #define STATUS_BAR_Y_OFFSET 20
     #define STATUS_BAR_HEIGHT 16
     #define ICON_SIZE 16
-    #define ICON_NUM 6 
+    #define ICON_NUM 6
     
     static int iconX[ICON_NUM] = {50, 90, 130, 170, 210, 10}; // Added back icon at x=10
     static int iconY = STATUS_BAR_Y_OFFSET;
@@ -1313,7 +1157,7 @@ void runUI() {
         if (ts.touched() && feature_active) { 
             TS_Point p = ts.getPoint();
             int x = ::map(p.x, 300, 3800, 0, SCREEN_WIDTH - 1);
-            int y = ::map(p.y, 3800, 300, 0, SCREENHEIGHT - 1);
+            int y = ::map(p.y, 3800, 300, 0, SCREEN_HEIGHT - 1);
 
             if (y > STATUS_BAR_Y_OFFSET && y < STATUS_BAR_Y_OFFSET + STATUS_BAR_HEIGHT) {
                 for (int i = 0; i < ICON_NUM; i++) {
@@ -1335,8 +1179,9 @@ void runUI() {
 
 void subjammerSetup() {
     Serial.begin(115200);
+    subghzReleasePinsFromNrf();
 
-    ELECHOUSE_cc1101.Init(); 
+    ELECHOUSE_cc1101.Init();
     ELECHOUSE_cc1101.setModulation(0); 
     ELECHOUSE_cc1101.setRxBW(500.0);  
     ELECHOUSE_cc1101.setPA(12);       

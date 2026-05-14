@@ -2,6 +2,26 @@
 #define SHARED_H
 
 
+// PCF8574 button-expander pin assignments. Hydra.ino defines these too;
+// the guarded redefinitions here let any .cpp that pulls in shared.h read
+// buttons without recreating the same #defines locally.
+#ifndef BTN_UP
+#define BTN_UP     6
+#endif
+#ifndef BTN_DOWN
+#define BTN_DOWN   3
+#endif
+#ifndef BTN_LEFT
+#define BTN_LEFT   4
+#endif
+#ifndef BTN_RIGHT
+#define BTN_RIGHT  5
+#endif
+#ifndef BTN_SELECT
+#define BTN_SELECT 7
+#endif
+
+
 const uint16_t ORANGE = 0xfbe4;
 const uint16_t GRAY = 0x8410;
 const uint16_t BLUE = 0x001F;

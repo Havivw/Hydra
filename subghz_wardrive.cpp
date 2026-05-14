@@ -13,13 +13,8 @@
 #include <SD.h>
 #include <SPI.h>
 #include "subconfig.h"   // brings in ELECHOUSE_CC1101_ESP32DIV — the DIV v1 CC1101 driver fork
-
-#define DARK_GRAY 0x4208
-
-#define BTN_UP     6
-#define BTN_DOWN   3
-#define BTN_LEFT   4
-#define BTN_RIGHT  5
+#include "shared.h"
+#include "sub_shared.h"
 
 namespace SubGhzWardrive {
 
@@ -48,6 +43,7 @@ static uint32_t totalHits = 0;
 static uint32_t lastUiUpdate = 0;
 static uint32_t lastBtnMs = 0;
 static const uint32_t BTN_DEBOUNCE_MS = 200;
+static bool upHeldFromPrev = true;
 
 static File csvFile;
 static bool sdReady = false;
@@ -168,6 +164,8 @@ static void redrawList() {
 }
 
 void wardriveSetup() {
+  subghzReleasePinsFromNrf();
+
   tft.fillScreen(TFT_BLACK);
   setupTouchscreen();
 
@@ -176,6 +174,7 @@ void wardriveSetup() {
   autoHop = true;
   totalHits = 0;
   dispRowCount = 0;
+  upHeldFromPrev = true;
   for (int i = 0; i < HYDRA_WARDRIVE_CHANNEL_COUNT; i++) lastLoggedAt[i] = 0;
 
   // Start on the first selected channel. If nothing is selected the user is
@@ -185,13 +184,16 @@ void wardriveSetup() {
 
   pcf.pinMode(BTN_UP, INPUT_PULLUP);
 
-  Gps::begin();  // safe to call repeatedly
+  Gps::begin();  // safe to call repeatedly. NOTE: this permanently kills
+                 // touch for the session — GPS UART2 sits on the same GPIOs
+                 // as the XPT2046 CLK/MOSI. Wardrive is button-only by
+                 // design; documented in Hydra/README.md.
 
-  // ORDER MATTERS: mount SD BEFORE CC1101.Init(). Both live on VSPI; the SD
-  // library expects to set up the bus, and if CC1101 has already pulled it
-  // into its own config the SD mount fails. Initialise SD first, then
-  // CC1101 — the CC1101 driver uses a separate CS line and shares the bus
-  // politely once both are up.
+  // ORDER MATTERS: mount SD BEFORE CC1101.Init(). CC1101 CSN is GPIO 5 —
+  // the same physical pin as the SD card CS — so once the CC1101 driver
+  // is initialised it's driving that pin. SD must claim it first so its
+  // mount state is correct; both libraries cooperate on the shared CS via
+  // active-low transactions once both are up.
   sdReady = openCsv();
 
   ELECHOUSE_cc1101.Init();
@@ -218,13 +220,17 @@ void wardriveLoop() {
 
   uint32_t now = millis();
 
-  // UP toggles hop on/off
-  if (now - lastBtnMs > BTN_DEBOUNCE_MS) {
-    if (!pcf.digitalRead(BTN_UP)) {
-      autoHop = !autoHop;
-      lastBtnMs = now;
-      Serial.printf("[Wardrive] autoHop=%s\n", autoHop ? "ON" : "OFF");
-    }
+  // UP toggles hop on/off. Edge-latched: must release UP before another
+  // toggle can fire. Without this latch, holding UP flipped autoHop every
+  // BTN_DEBOUNCE_MS forever.
+  bool upPressed = !pcf.digitalRead(BTN_UP);
+  if (upHeldFromPrev) {
+    if (!upPressed) upHeldFromPrev = false;
+  } else if (upPressed && now - lastBtnMs > BTN_DEBOUNCE_MS) {
+    autoHop = !autoHop;
+    lastBtnMs = now;
+    upHeldFromPrev = true;
+    Serial.printf("[Wardrive] autoHop=%s\n", autoHop ? "ON" : "OFF");
   }
 
   // Skip the rest if nothing is selected — RSSI from an unconfigured radio

@@ -8,8 +8,8 @@
 #include "utils.h"
 #include "Touchscreen.h"
 #include "subconfig.h"
-
-#define DARK_GRAY 0x4208
+#include "shared.h"
+#include "sub_shared.h"
 
 namespace SpectrumAnalyzer {
 
@@ -120,6 +120,8 @@ static void drawFreqLabel(int slot, uint32_t hz) {
 }
 
 void spectrumSetup() {
+  subghzReleasePinsFromNrf();
+
   WardriveConfig::ensureInit();
   rebuildActive();
   hasLast = false;
