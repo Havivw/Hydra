@@ -126,7 +126,7 @@ void freqDetectorSetup() {
   tft.fillScreen(TFT_BLACK);
   setupTouchscreen();
 
-  ELECHOUSE_cc1101.Init();
+  cc1101InitForDivV1();
 
   float v = readBatteryVoltage();
   drawStatusBar(v, false);

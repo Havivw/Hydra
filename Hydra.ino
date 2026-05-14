@@ -3970,14 +3970,14 @@ void setup() {
   pcf.pinMode(BTN_SELECT, INPUT_PULLUP);
   pcf.begin();
 
-  // DO NOT call Gps::begin() at boot. GPS UART is configured on GPIO 32/25,
-  // which are the XPT2046 touchscreen's MOSI and CLK pins. The HardwareSerial
-  // begin() call assigns those pins to UART2 via the GPIO matrix, which
-  // permanently breaks the touchscreen for the rest of the session — even
-  // if no GPS module is physically connected. The comment originally here
-  // claimed this was a no-op when nothing is wired; it isn't. GPS-using
-  // features (wardrives) must call Gps::begin() themselves on entry and
-  // accept that touch won't work while they're active.
+  // Gps::begin() is no longer called at boot, but the touch-stealing
+  // hazard that used to live here is gone too: as of v0.0.3 the GPS UART
+  // is mapped to header pins IO17 (RX) and IO4 (TX) instead of IO32/IO25,
+  // so wiring up a GPS module no longer kills the XPT2046 touchscreen.
+  // Features that need GPS (wardrives, GPS Status) still call begin() on
+  // entry — that initialises the UART lazily, which keeps the cost of a
+  // GPS-less build at zero and avoids fighting NRF24 #1/#3 on boards
+  // where no module is wired.
 
   for (int pin = 0; pin < 8; pin++) {
     Serial.print("Button ");

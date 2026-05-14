@@ -508,7 +508,7 @@ void ReplayAttackSetup() {
 
   setupTouchscreen();
 
-  ELECHOUSE_cc1101.Init();
+  cc1101InitForDivV1();
   ELECHOUSE_cc1101.SetRx();
 
   subSwitch.enableReceive(RX_PIN);
@@ -898,7 +898,7 @@ void saveSetup() {
     drawStatusBar(currentBatteryVoltage, false);
     uiDrawn = false;
 
-    ELECHOUSE_cc1101.Init();
+    cc1101InitForDivV1();
     ELECHOUSE_cc1101.SetRx();
 
     mySwitch.enableReceive(RX_PIN);
@@ -1181,7 +1181,7 @@ void subjammerSetup() {
     Serial.begin(115200);
     subghzReleasePinsFromNrf();
 
-    ELECHOUSE_cc1101.Init();
+    cc1101InitForDivV1();
     ELECHOUSE_cc1101.setModulation(0); 
     ELECHOUSE_cc1101.setRxBW(500.0);  
     ELECHOUSE_cc1101.setPA(12);       

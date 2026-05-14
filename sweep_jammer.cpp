@@ -108,7 +108,7 @@ void sweepJammerSetup() {
   toggleHeldFromPrev = true;
   rebuildActive();
 
-  ELECHOUSE_cc1101.Init();
+  cc1101InitForDivV1();
   ELECHOUSE_cc1101.setModulation(0);
   ELECHOUSE_cc1101.setRxBW(500.0);
   ELECHOUSE_cc1101.setPA(12);

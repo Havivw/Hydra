@@ -8,6 +8,40 @@ are bumped.
 
 ## [Unreleased]
 
+## [0.0.3] — 2026-05-14
+
+- **Pin map correction (verified against v1 shield schematic
+  `Previous versions/ESP32-DIV v1/Schematic/ESP32DIV-SHIELD.jpg`)**:
+  - **CC1101 CSN is GPIO 27, not GPIO 5.** Hydra v0.0.2 documented
+    GPIO 5 based on the library's ESP32 default — but that default
+    was never correct for this board. The v0.0.2 docs are corrected
+    in `Hydra/README.md` and `plans/01-hardware-divv1.md`.
+  - **NRF24 numbering corrected:** NRF1 (U2) = GPIO 4/5; NRF2 (U3) =
+    26/27; NRF3 (U4) = 16/17. Older docs had NRF1 and NRF3 swapped.
+- **CC1101 silent-failure bug fixed.** Every SubGHz feature was calling
+  `ELECHOUSE_cc1101.Init()` with no `setSpiPin()` override, so the
+  driver drove the library default SS=5 — a pin where no CC1101 chip
+  exists on DIV v1. The actual CC1101 CSN (GPIO 27) was left floating,
+  so every `setMHZ`, `setModulation`, `setRx`, `setSidle` call silently
+  failed. Result: SubGHz features never actually worked correctly on
+  any cifertech v1.1.0 build or Hydra v0.0.1/v0.0.2.
+  - New `cc1101InitForDivV1()` helper in `sub_shared.h` calls
+    `setSpiPin(18,19,23,27)` + `setGDO(26,16)` before `Init()`.
+  - All 8 CC1101 init sites switched to the helper.
+- **GPS pins remapped to shield-header-accessible GPIOs:**
+  - Old: GPIO 32 (RX) / 25 (TX) — XPT2046 touchscreen lines; calling
+    `Gps::begin()` killed touch for the rest of the session, and
+    these pins are not on the exposed shield header.
+  - New: GPIO 17 (RX) / 4 (TX) — both reachable from the silkscreened
+    `IO17` and `IO4` pads on the 10×2 expansion header. Touch is
+    preserved when GPS is in use.
+  - README "Adding a GPS — ATGM336H" section rewritten with the new
+    wiring table and the pin-sharing trade-offs (GPIO 17 = NRF24 #3
+    CSN, currently dormant; GPIO 4 = TFT backlight + NRF24 #1 CE,
+    backlight is passive HIGH so coexistence works).
+- `subghzReleasePinsFromNrf()` now also releases GPIO 27 (added with
+  the CSN fix).
+
 ## [0.0.2] — 2026-05-14
 
 - SubGHz audit pass: documentation, bugs, and duplication cleanup.

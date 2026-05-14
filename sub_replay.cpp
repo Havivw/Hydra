@@ -179,7 +179,7 @@ static bool loadFile(const char* filename) {
 // CC1101 OOK async TX
 // ============================================================
 static void cc1101TxPrep() {
-  ELECHOUSE_cc1101.Init();
+  cc1101InitForDivV1();
   ELECHOUSE_cc1101.setMHZ(parsedFreqHz / 1000000.0f);
   ELECHOUSE_cc1101.setModulation(2);  // ASK/OOK
   if (parsedPreset == PRESET_OOK_650) {

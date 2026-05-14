@@ -196,7 +196,7 @@ void wardriveSetup() {
   // active-low transactions once both are up.
   sdReady = openCsv();
 
-  ELECHOUSE_cc1101.Init();
+  cc1101InitForDivV1();
   setRxFrequency(curFreqIdx);
 
   Serial.printf("[Wardrive] SD=%s  CC1101 RX@%.2fMHz  %d ch active\n",

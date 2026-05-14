@@ -54,29 +54,33 @@ multiple-definition errors.
 | Touch (XPT2046) | HSPI via matrix — CLK/MISO/MOSI/CS | 25 / 35 / 32 / 33 |
 | Touch | IRQ (PENIRQ) | 34 |
 | SD card | VSPI native — SCK/MISO/MOSI/CS | 18 / 19 / 23 / 5 |
-| NRF24 #1 | CE / CSN | 16 / 17 |
-| NRF24 #2 | CE / CSN | 26 / 27 |
-| NRF24 #3 | CE / CSN | 4 / 5 |
-| CC1101 (sub-GHz) | SCK/MISO/MOSI/CSN/GDO0/GDO2 | 18 / 19 / 23 / 5 / 26 / 16 |
+| NRF24 #1 (U2) | CE / CSN | 4 / 5 |
+| NRF24 #2 (U3) | CE / CSN | 26 / 27 |
+| NRF24 #3 (U4) | CE / CSN | 16 / 17 |
+| CC1101 (U1) | SCK/MISO/MOSI/CSN/GDO0/GDO2 | 18 / 19 / 23 / 27 / 26 / 16 |
 | PCF8574 (buttons) | I²C SDA / SCL | 21 / 22 |
 | Battery monitor | ADC | 36 |
-| GPS UART (optional, header) | RX / TX | 32 / 25 ⚠ |
+| GPS UART (optional, header) | RX / TX | 17 / 4 |
 | NeoPixels (WS2812) | DIN | 1 |
 
 ### Pin conflicts to remember
 
-- **GPIO 4:** TFT backlight AND NRF24 #3 CE.
-- **GPIO 5:** SD CS AND NRF24 #3 CSN AND CC1101 CSN. The CC1101 driver uses
-  the standard ESP32 VSPI default (SS=5) — the firmware never calls
-  `setSpiPin()` to override it. So CC1101 and SD share the same CS line,
-  and the order of `SD.begin(5)` vs `ELECHOUSE_cc1101.Init()` matters in
-  every SubGHz feature that also touches the SD card.
-- **GPIO 16:** NRF24 #1 CE AND CC1101 GDO2.
-- **GPIO 26:** NRF24 #2 CE AND CC1101 GDO0.
-- **GPIO 27:** NRF24 #2 CSN. (Not CC1101 CSN — older docs claimed this; the
-  schematic and the working ELECHOUSE library defaults disagree.)
-- **GPIO 25 / 32:** GPS UART2 AND touchscreen CLK/MOSI. See "GPS kills touch"
-  below.
+- **GPIO 4:** TFT backlight AND NRF24 #1 CE.
+- **GPIO 5:** SD CS AND NRF24 #1 CSN. SD and NRF24 #1 are mutually
+  exclusive — the SD driver and the RF24 driver both want this pin.
+- **GPIO 16:** NRF24 #3 CE AND CC1101 GDO2. Sub-GHz "RX data" and the
+  third NRF24 share this line; the firmware enforces one-at-a-time use
+  via `subghzReleasePinsFromNrf()` on every SubGHz feature entry.
+- **GPIO 26:** NRF24 #2 CE AND CC1101 GDO0. Same one-at-a-time deal.
+- **GPIO 27:** NRF24 #2 CSN AND CC1101 CSN. 2.4 GHz and sub-GHz radios
+  are mutually exclusive — they both want this pin as chip-select. The
+  CC1101 driver claims it via `cc1101InitForDivV1()` (which calls
+  `ELECHOUSE_cc1101.setSpiPin(18,19,23,27)` — the library default of
+  SS=5 is wrong for DIV v1 and was a latent bug fixed in v0.0.3).
+- **GPIO 25 / 32:** XPT2046 touchscreen CLK/MOSI. **Do not** wire GPS or
+  any UART here — earlier versions of this firmware did and it killed
+  touch for the rest of the session. As of v0.0.3 the GPS pins are
+  17/4, both reachable from the exposed shield header.
 
 ## Adding a GPS — ATGM336H (WIP)
 
@@ -101,39 +105,41 @@ at 9600 8N1 by default — which is what Hydra's `gps.cpp` expects.
 
 ### Wiring
 
-| ATGM336H pin | ESP32-DIV signal | ESP32 GPIO |
+The shield's 10×2 expansion header (silkscreen labels `IO16`/`IO17`/etc.)
+exposes both GPIOs Hydra wants for GPS. Solder to those pins; no
+soldering to the ESP32 module itself is needed.
+
+| ATGM336H pin | Header silkscreen | ESP32 GPIO |
 |---|---|---|
-| VCC | 3.3 V on the shield's expansion header | — |
-| GND | GND on the shield's expansion header | — |
-| TX (module → ESP32) | `HYDRA_GPS_UART_RX` (see `gps.h`) | **GPIO 32** |
-| RX (ESP32 → module) | `HYDRA_GPS_UART_TX` (see `gps.h`) | **GPIO 25** |
+| VCC | `3v3` | — |
+| GND | `GND` (either one) | — |
+| TX (module → ESP32) | `IO17` | **GPIO 17** |
+| RX (ESP32 → module) | `IO4` | **GPIO 4** |
 
-Power the module from 3V3, NOT 5V — the ATGM336H IC itself is a 3V3 part,
-and the ESP32 GPIOs are also 3V3. Wiring it to the shield's 5V rail will
-work the GPS chip's regulator hard and may level-shift TX above the ESP32's
-input tolerance.
+Power the module from 3V3, NOT 5V — the ATGM336H IC is a 3V3 part, and
+the ESP32 GPIOs are also 3V3. Wiring it to the shield's 5V rail will
+work the GPS chip's regulator hard and may level-shift TX above the
+ESP32's input tolerance.
 
-### ⚠ Pin conflict — GPS kills touch until reboot
+### Pin-sharing notes
 
-GPIO 25 and 32 are also the XPT2046 touchscreen's CLK and MOSI lines. When
-any feature calls `Gps::begin()`, ESP32 reassigns those two pins to UART2
-via the GPIO matrix, and the touchscreen stops responding until a power
-cycle. This is true regardless of whether a GPS module is physically
-soldered — the firmware pin reassignment is what causes it.
+The chosen pins are the least-conflicted GPIOs on the shield header,
+but neither is truly exclusive — every header pin has a primary
+peripheral function on this board.
 
-In practice:
-
-- **Boot:** Hydra does NOT call `Gps::begin()` at boot, so touch works
-  immediately after power-on.
-- **GPS-using features** (`GPS Status`, `NRF Wardrive`, `Sub-GHz Wardrive`)
-  call `Gps::begin()` on entry. Touch dies for the rest of the session;
-  navigate them with the physical buttons.
-- **Recovery:** reboot the device. There is no software way to release the
-  UART2 pin reservation that I've found that doesn't itself disturb other
-  peripherals.
-
-A future hardware revision could route GPS to a different UART on
-non-touch-conflicting pins — but on v1 boards, this is the trade you make.
+- **GPIO 17** is also **NRF24 #3 CSN**. Hydra's NRF24 #3 is rarely
+  active (most NRF features use NRF #1 or #2), but if you run a feature
+  that drives NRF3 — currently none of the shipped features do — GPS
+  data on this pin will be corrupted while NRF3 is selecting.
+- **GPIO 4** is the **TFT backlight** AND **NRF24 #1 CE**. The firmware
+  drives the backlight HIGH at boot and never toggles it, so steady-state
+  GPS TX coexists. The brief CE pulses NRF24 #1 issues during 2.4 GHz
+  features won't reach the GPS as anything meaningful (GPS treats it as
+  line noise). GPS RX (the line FROM ESP32 TO module) is normally idle
+  HIGH anyway since we don't send config commands.
+- Earlier docs pointed at **GPIO 32 / 25** — those are the **XPT2046
+  touchscreen** CLK/MOSI lines and are NOT on the exposed header. Wiring
+  GPS there killed touch for the rest of the session.
 
 ### Verifying after install
 
@@ -168,11 +174,13 @@ If "Sats" stays at 0 forever:
    `SD.begin(5)` call will steal VSPI's MISO away from the touchscreen for
    the rest of the session.
 
-3. **`Gps::begin()` kills touch.** GPS UART2 is configured on GPIO 25/32 —
-   the touchscreen's CLK and MOSI. Calling `Gps::begin()` reassigns those
-   pins to UART2 via the GPIO matrix and the touchscreen stops working until
-   reboot. **Do NOT call `Gps::begin()` at boot.** GPS-using features
-   (wardrives, gps_status) accept this trade-off and call it on entry.
+3. **CC1101 SPI pins must be explicitly set.** `ELECHOUSE_cc1101.Init()`
+   on its own uses the library's ESP32 default (SS=5), but DIV v1 wires
+   CC1101 CSN to GPIO 27. Bare `Init()` leaves the chip's CSN floating
+   and every SPI command (setMHZ, setRx, etc.) silently fails. Every
+   SubGHz feature must call `cc1101InitForDivV1()` (in `sub_shared.h`)
+   instead. Was a latent bug in cifertech v1.1.0 / Hydra v0.0.1–v0.0.2,
+   fixed in v0.0.3.
 
 4. **No SD probe in the status bar.** `utils.cpp::drawStatusBar()` does NOT
    call `isSDCardAvailable()`; the status bar SD indicator is hardcoded to
@@ -185,7 +193,7 @@ If "Sats" stays at 0 forever:
    The Arduino ESP32 SD library caches `_pdrv` and returns true on subsequent
    `begin()` calls without re-running pin setup. If you exit an SD feature
    and then enter another, the second feature usually inherits a working
-   mount. If you exit an NRF24/CC1101 feature that drove GPIO 5 (NRF24 #3
+   mount. If you exit an NRF24 #1 feature that drove GPIO 5 (NRF24 #1
    CSN) and then enter an SD feature, force `pinMode(5, OUTPUT);
    digitalWrite(5, HIGH);` before `SD.begin(5)` to give the card a clean CS
    edge (see `esppwnagotchi.cpp`).
