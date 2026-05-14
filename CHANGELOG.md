@@ -8,6 +8,48 @@ are bumped.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-14
+
+- **KeeLoq decode + counter+1 replay (Stage 3a Path A).** Hydra now
+  identifies rolling-code KeeLoq remotes when a manufacturer key
+  table is supplied via SD card, and can replay captured frames with
+  the counter incremented (the standard rolling-code resync attack).
+  Built incrementally across five milestones; each lands on main as
+  its own commit so it can be reverted in isolation.
+  - `keeloq_common.{h,cpp}` — 528-round KeeLoq encrypt/decrypt + 7
+    learning-type key-derivation functions, ported from Momentum's
+    `lib/subghz/protocols/keeloq_common.c`.
+  - `keeloq_keys.{h,cpp}` — runtime-loadable manufacturer key table.
+    Ships empty; users with their own decrypted Flipper keystore
+    drop a plain-text file at `/hydra/keeloq_keys.txt` in the format
+    `<16-hex-key>:<learning-type-decimal>:<name>` (one per line).
+    Heap-grown buffer, hard cap at 200 entries.
+  - `keeloq_decode.{h,cpp}` — keystore-iterating try-decode. For each
+    mfr entry, derives the per-device key, decrypts the hop, and
+    accepts the match if the decrypted serial's low 10 bits agree
+    with the unencrypted serial (HCS301 discrimination check).
+  - `keeloq_pwm.{h,cpp}` — PWM frame parser AND synthesiser. Parses
+    Record's signed-microsecond sample buffer into a `KeeloqFrame`
+    (32-bit hop + 28-bit serial + 4-bit button + 2-bit status);
+    synthesises the inverse for counter+1 replay.
+  - **`sub_record.cpp`** — after rc-switch decode misses, tries
+    KeeLoq. On match, shows mfr/serial/button/counter in magenta on
+    the captured screen and adds six `# Hydra_KeeLoq_*` headers
+    (including the derived per-device key) to the saved `.sub` file.
+  - **`sub_replay.cpp`** — reads those headers; if present, the INFO
+    screen gains a `[RIGHT] Replay counter+1` option that rebuilds
+    the cleartext hop with `counter+1`, re-encrypts via
+    `Keeloq::encrypt`, synthesises a fresh PWM frame, and bit-bangs
+    it via the existing CC1101 OOK TX path. Counter persists across
+    presses so the user can fire counter+2, +3, etc.
+- **Behaviour with no keystore loaded** is unchanged from v0.1.0 —
+  KeeLoq decode silently no-ops if `/hydra/keeloq_keys.txt` is
+  missing or empty.
+- **Tooling fixes shipped alongside:**
+  - `.claude/` removed from the repo and from git history; added to
+    `.gitignore`. The directory was Claude Code project-level
+    scaffolding that didn't belong in the firmware repo.
+
 ## [0.1.0] — 2026-05-14
 
 - **New SubGHz feature: `Record .sub` (submenu idx 8).** Captures a raw

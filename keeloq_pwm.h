@@ -47,6 +47,24 @@ namespace KeeloqPwm {
 bool parseFrame(const int* samples, int sampleCount,
                 KeeloqDecode::Frame& outFrame);
 
+// Synthesise a PWM sample stream from a Frame. The output is the same
+// signed-microsecond format the parser consumes (positive=HIGH µs,
+// negative=LOW µs), suitable for handing to the existing CC1101 OOK
+// bit-bang TX path. `teShortUs` controls the symbol time (typ 400 µs
+// for HCS301; pass the value captured during decode for accuracy).
+//
+// Layout produced:
+//   - 12 preamble pairs of (te, te)
+//   - one header gap (LOW for ~10 × te)
+//   - 66 PWM-3 data bits, LSB-first per HCS301 framing
+//
+// Returns the number of samples written (≈ 160), or 0 if `maxSamples`
+// is too small.
+int buildFrame(const KeeloqDecode::Frame& frame,
+               int teShortUs,
+               int* outSamples,
+               int maxSamples);
+
 }  // namespace KeeloqPwm
 
 #endif  // HYDRA_KEELOQ_PWM_H
