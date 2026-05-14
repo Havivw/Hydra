@@ -1,7 +1,17 @@
-# Hydra
+<p align="center">
+  <img src="assets/hydra-logo.png" alt="Hydra logo" width="220" />
+</p>
 
-Firmware for the [ESP32-DIV v1](https://github.com/cifertech/ESP32-DIV) handheld.
-Forked from cifertech ESP32-DIV v1.1.0 and extended with additional features.
+<h1 align="center">Hydra</h1>
+
+<p align="center">
+  Firmware for the
+  <a href="https://github.com/cifertech/ESP32-DIV">ESP32-DIV v1</a>
+  handheld.<br>
+  Forked from cifertech ESP32-DIV v1.1.0 and extended with additional features.
+</p>
+
+---
 
 - **Target:** ESP32-WROOM-32 (plain ESP32, NOT S3)
 - **Board:** ESP32-DIV v1 (main board + shield)
