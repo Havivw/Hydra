@@ -65,6 +65,80 @@ multiple-definition errors.
 - **GPIO 25 / 32:** GPS UART2 AND touchscreen CLK/MOSI. See "GPS kills touch"
   below.
 
+## Adding a GPS — ATGM336H (WIP)
+
+The PCB has no GPS receiver on board, but the shield's expansion header
+(J3, TSM-110-04-S-DV) breaks out enough free pins to bolt one on. The
+ATGM336H is cheap, ubiquitous, runs from 3.3 V, and speaks NMEA over UART
+at 9600 8N1 by default — which is what Hydra's `gps.cpp` expects.
+
+> ⚠ **Status: Work In Progress.** The firmware-side support is in
+> (`gps.cpp`, `gps_status.cpp`, GPS-tagged wardrive features), but the
+> author has not yet physically soldered an ATGM336H module to their board.
+> Wiring below is based on the schematic and the firmware's pin map; please
+> verify with a meter on first power-up and open an issue with corrections
+> if anything is off.
+
+### Bill of materials
+
+- 1 × ATGM336H GPS module (typically sold on a breakout PCB with an SMA or
+  IPEX antenna pad — both work). The version with the active patch antenna
+  on the board itself is the easiest.
+- A few cm of wire, or four 2.54 mm female jumpers if you want it removable.
+
+### Wiring
+
+| ATGM336H pin | ESP32-DIV signal | ESP32 GPIO |
+|---|---|---|
+| VCC | 3.3 V on the shield's expansion header | — |
+| GND | GND on the shield's expansion header | — |
+| TX (module → ESP32) | `HYDRA_GPS_UART_RX` (see `gps.h`) | **GPIO 32** |
+| RX (ESP32 → module) | `HYDRA_GPS_UART_TX` (see `gps.h`) | **GPIO 25** |
+
+Power the module from 3V3, NOT 5V — the ATGM336H IC itself is a 3V3 part,
+and the ESP32 GPIOs are also 3V3. Wiring it to the shield's 5V rail will
+work the GPS chip's regulator hard and may level-shift TX above the ESP32's
+input tolerance.
+
+### ⚠ Pin conflict — GPS kills touch until reboot
+
+GPIO 25 and 32 are also the XPT2046 touchscreen's CLK and MOSI lines. When
+any feature calls `Gps::begin()`, ESP32 reassigns those two pins to UART2
+via the GPIO matrix, and the touchscreen stops responding until a power
+cycle. This is true regardless of whether a GPS module is physically
+soldered — the firmware pin reassignment is what causes it.
+
+In practice:
+
+- **Boot:** Hydra does NOT call `Gps::begin()` at boot, so touch works
+  immediately after power-on.
+- **GPS-using features** (`GPS Status`, `NRF Wardrive`, `Sub-GHz Wardrive`)
+  call `Gps::begin()` on entry. Touch dies for the rest of the session;
+  navigate them with the physical buttons.
+- **Recovery:** reboot the device. There is no software way to release the
+  UART2 pin reservation that I've found that doesn't itself disturb other
+  peripherals.
+
+A future hardware revision could route GPS to a different UART on
+non-touch-conflicting pins — but on v1 boards, this is the trade you make.
+
+### Verifying after install
+
+After soldering and flashing, open Tools → GPS Status. With a clear sky
+view (or antenna at a window) you should see:
+
+- "Sats: N" climb to a non-zero number within ~30 s of cold-start
+- Time/date update once N ≥ 4 satellites
+- Lat/Lon populate once you have a fix
+
+If "Sats" stays at 0 forever:
+
+- Confirm TX/RX aren't swapped (this is by far the most common mistake;
+  the labels on cheap modules vary)
+- Check VCC at the module pin with a meter (should be 3.30–3.33 V)
+- Some ATGM336H clones boot at 38400 baud; if so, edit `HYDRA_GPS_BAUD` in
+  `gps.h` to 38400 and reflash
+
 ## Gotchas (battle-tested 2026-05)
 
 1. **PCF8574 init order.** Call `pcf.pinMode()` for every button pin BEFORE
@@ -174,6 +248,12 @@ not a slight — please open an issue / PR and we'll add you.
 
 ## License
 
-Inherits the original cifertech ESP32-DIV license. See the upstream repo for
-the license text. Modifications and new features by the Hydra contributors
-are released under the same terms.
+**Hydra is free for personal, non-commercial use only.** See
+[`LICENSE`](LICENSE) for the full terms.
+
+Files retained from the upstream cifertech ESP32-DIV v1.1.0 firmware remain
+under the upstream MIT license (Copyright (c) 2023 CiferTech). Modifications
+and new code added by the Hydra project are licensed under the personal-use
+terms in `LICENSE`. Commercial use of the firmware as a whole requires
+written permission — open a GitHub issue with the `commercial license`
+label to start that conversation.

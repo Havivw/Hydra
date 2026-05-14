@@ -1,0 +1,87 @@
+Hydra License — Personal Use Only
+==================================
+
+Copyright (c) 2026 Haviv Wachsler ("Havivw") and Hydra contributors.
+
+This firmware is derived in part from the ESP32-DIV v1.1.0 firmware by
+CiferTech (Copyright (c) 2023, MIT License). Files retained from that
+upstream remain under the upstream MIT terms in addition to the terms
+below. Modifications and new code introduced by the Hydra project are
+licensed solely under the terms in this document.
+
+
+1. Grant
+-------
+Permission is granted to any individual ("you") to download, build,
+flash, modify, and share the Hydra firmware for **personal,
+non-commercial purposes only**, subject to the conditions below.
+
+Personal, non-commercial use means:
+
+  - Building and flashing Hydra onto a device you own.
+  - Modifying the source for your own learning, experimentation, or
+    personal projects.
+  - Sharing your modifications publicly as source code, on the
+    condition that you preserve this license in full and credit the
+    Hydra project and its upstream sources (see README).
+  - Demonstrating, lecturing, or writing about the firmware in
+    educational or hobbyist contexts.
+
+
+2. Prohibited uses
+------------------
+Without explicit prior written permission from the Hydra project lead
+(Havivw), you may NOT:
+
+  - Sell the firmware, in source or binary form, alone or bundled with
+    hardware (this includes preloading Hydra on devices you sell).
+  - Use the firmware as part of a paid service, paid course,
+    subscription, or any product that generates revenue.
+  - Use the firmware in any commercial penetration-testing or
+    security-consulting engagement.
+  - Sublicense the firmware under terms more permissive than this
+    license.
+  - Misrepresent the origin of the firmware or remove attribution to
+    Hydra or upstream projects (CiferTech ESP32-DIV, ESP32Marauder,
+    Bruce, RF-Clown, etc. — see README "Thanks / credits").
+
+
+3. Distribution requirements
+----------------------------
+If you distribute the firmware, in source or binary form, you must:
+
+  (a) include this LICENSE file unmodified,
+  (b) preserve the credits section of the README, and
+  (c) clearly mark any modifications you have made.
+
+
+4. Use in security research
+---------------------------
+This firmware contains tools that can be used for wireless security
+research and education. By using Hydra you agree to:
+
+  - Only operate the firmware against systems, networks, and devices
+    you own or have explicit written authorization to test.
+  - Comply with all applicable local, regional, and national laws
+    regarding wireless communications, radio emissions, and computer
+    misuse.
+
+The Hydra contributors disclaim all responsibility for misuse.
+
+
+5. No warranty
+--------------
+THE FIRMWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE
+FIRMWARE OR THE USE OR OTHER DEALINGS IN THE FIRMWARE.
+
+
+6. Commercial licensing
+-----------------------
+For commercial licensing inquiries, contact the project lead via the
+Hydra repository (https://github.com/Havivw/Hydra) by opening an issue
+with the label "commercial license".
