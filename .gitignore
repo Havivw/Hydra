@@ -29,3 +29,7 @@ file_opts
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Claude Code project-level scaffolding (slash commands, settings, etc.)
+# Lives locally but does not belong in the firmware repo.
+.claude/
