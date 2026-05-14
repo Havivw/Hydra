@@ -8,6 +8,36 @@ are bumped.
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-05-14
+
+- **New SubGHz feature: `Record .sub` (submenu idx 8).** Captures a raw
+  OOK signal off the air on a user-selected WardriveConfig frequency,
+  saves it to SD as a Flipper-compatible `/hydra/sub_files/rec_NNN.sub`
+  file. SubReplay (idx 6) can play the result back without modification
+  — closes the capture-then-replay loop on-device without needing a
+  Flipper or other external tool to seed the SD card.
+- Implementation in `sub_record.{h,cpp}`. CC1101 in OOK 650 async RX,
+  ESP32 polls GDO0 for edges, records signed-microsecond timing samples
+  into a 2000-entry buffer (~8 KB DRAM, shared with SubReplay via
+  `subSampleBuf`). Stops on silence (250 ms after last edge),
+  buffer-full, listen-timeout (30 s with no signal), or SELECT.
+- Auto-incrementing `rec_NNN.sub` filenames so repeated captures don't
+  collide. Discard option re-listens on the same freq.
+- **rc-switch protocol decode runs in parallel with the raw capture.**
+  When the signal matches one of rc-switch's 12 supported protocols
+  (PT2262/Princeton, HT12/EV1527, HT6/HT8, Conrad RS-200, several short-
+  pulse variants), the captured screen shows the protocol name + code
+  + bit length, and the saved .sub file gets `# Hydra_RCSwitch_*`
+  comment headers. Stock Flipper still treats it as RAW; future Hydra
+  tooling can pick up the decoded form to skip bit-banging on replay.
+- **New SubGHz feature: `Send Code` (submenu idx 9).** Manual
+  transmitter for known fixed-code signals. Phase-based UI walks the
+  user through Protocol (1..12) → Frequency (WardriveConfig channels) →
+  Code (8-digit hex entry with cursor) → Bit length (4..32, defaults to
+  24) → Ready. UP transmits, LEFT steps back, SELECT exits. Useful for
+  resending codes you already know without first having to capture
+  them. Implementation in `sub_sendcode.{h,cpp}`.
+
 ## [0.0.3] — 2026-05-14
 
 - **Pin map correction (verified against v1 shield schematic

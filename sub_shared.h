@@ -72,6 +72,15 @@ extern const int SUB_DEFAULT_FREQ_COUNT;
 // worst a latent state-corruption bug.
 extern RCSwitch subSwitch;
 
+// Shared raw-sample buffer for SubReplay (playback) and SubRecord
+// (capture). Each entry is a signed microsecond duration: positive =
+// HIGH level for that long, negative = LOW. 2000 samples = 8 KB DRAM.
+// The two features are mutually exclusive (only one feature setup() can
+// be active at a time) so they safely share one allocation. Putting it
+// in BSS shared scope means DRAM stays under the segment limit.
+#define SUB_SAMPLE_BUF_MAX 2000
+extern int subSampleBuf[SUB_SAMPLE_BUF_MAX];
+
 // Pin-claim handoff helper: every SubGHz feature must release GPIO 16/26/27
 // from any prior NRF24 use before the CC1101 driver claims them, otherwise
 // the radio driver fights with a still-active NRF24 instance. Calling this

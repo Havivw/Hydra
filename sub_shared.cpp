@@ -9,3 +9,5 @@ const int SUB_DEFAULT_FREQ_COUNT =
   sizeof(SUB_DEFAULT_FREQS) / sizeof(SUB_DEFAULT_FREQS[0]);
 
 RCSwitch subSwitch;
+
+int subSampleBuf[SUB_SAMPLE_BUF_MAX];

@@ -46,6 +46,8 @@
 #include "spectrum_analyzer.h"
 #include "freq_detector.h"
 #include "sub_replay.h"
+#include "sub_record.h"
+#include "sub_sendcode.h"
 #include "nrf_mousejack.h"
 #include "nrf_sniffer.h"
 #include "nrf_heatmap.h"
@@ -152,7 +154,7 @@ const char *nrf_submenu_items[nrf_NUM_SUBMENU_ITEMS] = {
     "Back to Main Menu"};
 
 
-const int subghz_NUM_SUBMENU_ITEMS = 9;
+const int subghz_NUM_SUBMENU_ITEMS = 11;
 const char *subghz_submenu_items[subghz_NUM_SUBMENU_ITEMS] = {
     "Replay Attack",
     "SubGHz Jammer",
@@ -162,6 +164,8 @@ const char *subghz_submenu_items[subghz_NUM_SUBMENU_ITEMS] = {
     "Freq Detector",
     "Replay .sub",
     "Sweep Jammer",
+    "Record .sub",
+    "Send Code",
     "Back to Main Menu"};
 
 
@@ -268,6 +272,8 @@ const unsigned char *subghz_submenu_icons[subghz_NUM_SUBMENU_ITEMS] = {
     bitmap_icon_eye2,      // Freq Detector
     bitmap_icon_flash,     // Replay .sub
     bitmap_icon_jammer,    // Sweep Jammer
+    bitmap_icon_eye,       // Record .sub
+    bitmap_icon_key,       // Send Code
     bitmap_icon_go_back
 };
 
@@ -3161,7 +3167,7 @@ void handleSubGHzSubmenuButtons() {
         last_interaction_time = millis();
         delay(200);
 
-        if (current_submenu_index == 8) {  // Back to Main Menu
+        if (current_submenu_index == 10) {  // Back to Main Menu
             { uint32_t _dStart = millis(); while (isButtonPressed(BTN_SELECT) && millis() - _dStart < 400) delay(5); }
             in_sub_menu = false;
             is_main_menu = false;
@@ -3182,6 +3188,8 @@ void handleSubGHzSubmenuButtons() {
             case 5: runSubghzFeature(5, FreqDetector::freqDetectorSetup, FreqDetector::freqDetectorLoop); break;
             case 6: runSubghzFeature(6, SubReplay::subReplaySetup,   SubReplay::subReplayLoop);   break;
             case 7: runSubghzFeature(7, SweepJammer::sweepJammerSetup, SweepJammer::sweepJammerLoop); break;
+            case 8: runSubghzFeature(8, SubRecord::subRecordSetup,   SubRecord::subRecordLoop);   break;
+            case 9: runSubghzFeature(9, SubSendCode::subSendCodeSetup, SubSendCode::subSendCodeLoop); break;
         }
     }
 
@@ -3210,7 +3218,7 @@ void handleSubGHzSubmenuButtons() {
                 displaySubmenu();
                 delay(200);
 
-                if (current_submenu_index == 8) {  // Back to Main Menu
+                if (current_submenu_index == 10) {  // Back to Main Menu
                     in_sub_menu = false;
                     is_main_menu = false;
                     feature_active = false;
@@ -3227,6 +3235,8 @@ void handleSubGHzSubmenuButtons() {
                     case 5: runSubghzFeature(5, FreqDetector::freqDetectorSetup, FreqDetector::freqDetectorLoop); break;
                     case 6: runSubghzFeature(6, SubReplay::subReplaySetup,   SubReplay::subReplayLoop);   break;
                     case 7: runSubghzFeature(7, SweepJammer::sweepJammerSetup, SweepJammer::sweepJammerLoop); break;
+                    case 8: runSubghzFeature(8, SubRecord::subRecordSetup,   SubRecord::subRecordLoop);   break;
+                    case 9: runSubghzFeature(9, SubSendCode::subSendCodeSetup, SubSendCode::subSendCodeLoop); break;
                 }
                 break;
             }

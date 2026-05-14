@@ -35,12 +35,12 @@ static int viewOffset = 0;
 #define LIST_ROW_HEIGHT 16
 #define LIST_TOP_Y 60
 
-// Parsed signal. 2000 samples = 8 KB; covers the vast majority of public
-// Flipper RAW captures (typical files are 50-1500 samples). Bumping higher
-// pushes DRAM over the line on a board this loaded — if you have a longer
-// signal, split it into multiple .sub files.
-#define MAX_SAMPLES 2000
-static int      sampleBuf[MAX_SAMPLES];
+// Parsed signal lives in the shared SubGHz sample buffer (sub_shared.h).
+// 2000 samples = 8 KB DRAM, shared with SubRecord since the two are
+// mutually exclusive. Typical Flipper RAW files are 50-1500 samples; if
+// you have something longer, split it into multiple .sub files.
+#define MAX_SAMPLES SUB_SAMPLE_BUF_MAX
+#define sampleBuf subSampleBuf
 static int      sampleCount = 0;
 static uint32_t parsedFreqHz = 0;
 enum PresetKind { PRESET_UNKNOWN = 0, PRESET_OOK_650 = 1, PRESET_OOK_270 = 2 };

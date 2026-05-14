@@ -4,6 +4,7 @@
 #include "Touchscreen.h"
 #include "target_list.h"
 #include "hydra_logo.h"
+#include "version.h"
 
 
 /*
@@ -370,7 +371,7 @@ void displayLogo(uint16_t color, int displayTime) {
   tft.setTextColor(color);
   tft.setTextFont(2);
   tft.setTextSize(1);
-  const char* versionStr = "version: 0.0.1";
+  const char* versionStr = "version: " HYDRA_VERSION;
   int16_t verW = tft.textWidth(versionStr, 2);
   int16_t verX = (screenWidth - verW) / 2;
   int16_t verY = logoY + HYDRA_LOGO_H + 14;
@@ -381,7 +382,7 @@ void displayLogo(uint16_t color, int displayTime) {
   Serial.println("==================================");
   Serial.println("Hydra                             ");
   Serial.println("Developed by: Claude              ");
-  Serial.println("Version:      0.0.1               ");
+  Serial.print  ("Version:      "); Serial.println(HYDRA_VERSION);
   Serial.println("==================================");
 
   delay(displayTime);
