@@ -1,0 +1,31 @@
+# Arduino / arduino-cli build artifacts
+build/
+build_*/
+*.bin
+*.elf
+*.map
+*.hex
+*.partitions.bin
+*.bootloader.bin
+*.merged.bin
+
+# Sandbox / cache caches that arduino-cli sometimes drops next to the sketch
+*.cache/
+.cache/
+includes.cache
+libraries.cache
+build.options.json
+build_opt.h
+compile_commands.json
+file_opts
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
